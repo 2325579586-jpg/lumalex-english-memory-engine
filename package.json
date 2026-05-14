@@ -1,0 +1,7 @@
+{
+  "name": "world-app-api",
+  "private": true,
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4"
+  }
+}
