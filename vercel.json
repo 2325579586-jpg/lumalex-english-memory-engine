@@ -1,0 +1,17 @@
+{
+  "framework": null,
+  "installCommand": "npm install && cd frontend && npm install",
+  "buildCommand": "cd frontend && npm run build",
+  "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/**/*.js": {
+      "includeFiles": "backend/system_lexicon_data/**/*.json"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

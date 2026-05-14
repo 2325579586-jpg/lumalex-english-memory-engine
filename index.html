@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LumaLex | 正在切换到正式线上版</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        background:
+          radial-gradient(circle at top left, rgba(124, 140, 255, 0.18), transparent 30%),
+          radial-gradient(circle at 80% 10%, rgba(245, 158, 97, 0.18), transparent 22%),
+          linear-gradient(180deg, #0b1020 0%, #0f1628 100%);
+        color: #f5f7fb;
+        padding: 24px;
+      }
+
+      .panel {
+        width: min(560px, 100%);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        background: rgba(16, 23, 42, 0.92);
+        border-radius: 28px;
+        box-shadow: 0 20px 50px rgba(7, 11, 23, 0.35);
+        padding: 32px;
+      }
+
+      .eyebrow {
+        margin: 0 0 12px;
+        font-size: 12px;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: #94a3b8;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 32px;
+        line-height: 1.2;
+      }
+
+      p {
+        margin: 16px 0 0;
+        line-height: 1.7;
+        color: #cbd5e1;
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 28px;
+      }
+
+      a,
+      button {
+        border: 0;
+        border-radius: 16px;
+        padding: 14px 18px;
+        font: inherit;
+        text-decoration: none;
+        cursor: pointer;
+      }
+
+      .primary {
+        background: #f59e61;
+        color: #24160f;
+        font-weight: 700;
+      }
+
+      .secondary {
+        background: rgba(255, 255, 255, 0.06);
+        color: #f5f7fb;
+      }
+
+      .status {
+        margin-top: 18px;
+        font-size: 14px;
+        color: #94a3b8;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="panel">
+      <p class="eyebrow">LumaLex Online</p>
+      <h1>正式线上版已经接管入口</h1>
+      <p>
+        你当前打开的是旧的本地文件入口。现在应用已经迁移到正式线上版，账号、云同步、词库和学习数据都应通过正式网站访问，
+        不再依赖本地 <code>127.0.0.1</code> 或临时 tunnel 地址。
+      </p>
+      <div class="actions">
+        <a class="primary" href="https://worldapp-livid.vercel.app/">打开正式线上版</a>
+        <button class="secondary" type="button" id="retryButton">重新尝试自动跳转</button>
+      </div>
+      <p class="status" id="statusText">正在检查正式线上服务…</p>
+    </main>
+    <script>
+      const target = "https://worldapp-livid.vercel.app/";
+      const statusText = document.getElementById("statusText");
+      const retryButton = document.getElementById("retryButton");
+
+      async function tryRedirect() {
+        statusText.textContent = "正在连接正式线上服务…";
+        try {
+          await fetch("https://worldapp-livid.vercel.app/api/health", { mode: "cors" });
+          statusText.textContent = "连接成功，正在跳转到正式线上版…";
+          window.location.href = target;
+        } catch {
+          statusText.textContent = "正式线上服务暂时不可用，请稍后重试，或点击上方按钮手动进入。";
+        }
+      }
+
+      retryButton.addEventListener("click", tryRedirect);
+      tryRedirect();
+    </script>
+  </body>
+</html>

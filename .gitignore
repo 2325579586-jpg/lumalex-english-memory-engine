@@ -1,0 +1,47 @@
+# Environment and deployment secrets
+.env
+.env.*
+!.env.example
+!.env.development.example
+backend/.env
+frontend/.env.local
+frontend/.env.*.local
+.vercel/
+frontend/.vercel/
+
+# Dependencies
+node_modules/
+frontend/node_modules/
+backend/.venv/
+venv/
+.venv/
+
+# Build outputs and caches
+dist/
+frontend/dist/
+*.tsbuildinfo
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/tailwind.config.js
+frontend/tailwind.config.d.ts
+__pycache__/
+backend/__pycache__/
+.pytest_cache/
+.cache/
+
+# Local databases and logs
+*.db
+*.sqlite
+*.sqlite3
+*.log
+backend/*.log
+tools/*.log
+
+# Local binaries and generated artifacts
+tools/*.exe
+
+# Source reference PDFs are not redistributed in the public repo
+*.pdf
+
+# Internal handoff notes
+handoff.md
