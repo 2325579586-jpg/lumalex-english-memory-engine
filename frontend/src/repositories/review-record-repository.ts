@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { requireCurrentUserId } from "@/services/auth-session";
-import { scheduleCloudDataSync } from "@/services/cloud-sync-service";
+import { recordCloudDeletion, scheduleCloudDataSync } from "@/services/cloud-sync-service";
 import type { ReviewRecord } from "@/types/domain";
 
 export const reviewRecordRepository = {
@@ -25,6 +25,7 @@ export const reviewRecordRepository = {
   async deleteByWord(wordId: string) {
     const userId = requireCurrentUserId();
     const recordIds = await db.reviewRecords.where("[userId+wordId]").equals([userId, wordId]).primaryKeys();
+    recordCloudDeletion("reviewRecords", recordIds as string[]);
     await db.reviewRecords.bulkDelete(recordIds);
     scheduleCloudDataSync();
   },

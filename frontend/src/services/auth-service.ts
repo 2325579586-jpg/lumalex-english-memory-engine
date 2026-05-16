@@ -69,18 +69,51 @@ function isApiUnavailable(error: unknown) {
 }
 
 function assertSession(payload: { session?: AuthSession }) {
-  if (!payload.session?.userId || !payload.session.username) {
+  if (!payload.session?.userId || !payload.session.username || !payload.session.syncToken) {
     throw new ApiRequestError(REQUEST_FAILED_MESSAGE, { unavailable: true });
   }
   return payload.session;
+}
+
+async function findSingleLegacyDataOwner(targetUserId: string) {
+  const [decks, words] = await Promise.all([
+    db.decks.toArray(),
+    db.words.toArray(),
+  ]);
+  const owners = new Set<string>();
+
+  for (const deck of decks) {
+    if (deck.userId && deck.userId !== targetUserId && deck.sourceType !== "system") owners.add(deck.userId);
+  }
+  for (const word of words) {
+    if (word.userId && word.userId !== targetUserId && word.source !== "system") owners.add(word.userId);
+  }
+
+  return owners.size === 1 ? Array.from(owners)[0] : null;
+}
+
+async function hasLocalCustomData(userId: string) {
+  const [customDecks, customWords] = await Promise.all([
+    db.decks.where("userId").equals(userId).filter((deck) => deck.sourceType !== "system").count(),
+    db.words.where("userId").equals(userId).filter((word) => word.source !== "system").count(),
+  ]);
+  return customDecks + customWords > 0;
 }
 
 async function ensureLocalUser(userId: string, username: string, passwordHash: string) {
   const now = Date.now();
   const existingById = await userRepository.getById(userId);
   const existingByUsername = await userRepository.getByUsername(username);
-  if (existingByUsername && existingByUsername.id !== userId) {
-    await migrateLocalUserData(existingByUsername.id, userId);
+  const legacyUserId =
+    existingByUsername && existingByUsername.id !== userId
+      ? existingByUsername.id
+      : !(await hasLocalCustomData(userId))
+        ? await findSingleLegacyDataOwner(userId)
+        : null;
+
+  if (legacyUserId && legacyUserId !== userId) {
+    await migrateLocalUserData(legacyUserId, userId);
+    await db.meta.delete(`cloud_synced_at:${userId}`);
   }
   const existing = existingById || existingByUsername;
   const user: AppUser = {
@@ -148,15 +181,20 @@ export async function syncLegacyLocalAccountToBackend(userId: string) {
     username: localUser.username,
     passwordHash: localUser.passwordHash,
   });
-  return assertSession(payload);
+  const session = assertSession(payload);
+  setAuthSession(session);
+  return session;
 }
 
 export async function syncCurrentLocalAccountToBackend() {
   const session = getAuthSession();
   if (!session) return null;
 
-  const localUser =
-    (await userRepository.getById(session.userId)) || (await userRepository.getByUsername(session.username));
+  const [currentUser, usernameUser] = await Promise.all([
+    userRepository.getById(session.userId),
+    userRepository.getByUsername(session.username),
+  ]);
+  const localUser = usernameUser && usernameUser.id !== session.userId ? usernameUser : currentUser || usernameUser;
 
   if (!localUser) return null;
 
@@ -170,12 +208,11 @@ export async function syncCurrentLocalAccountToBackend() {
   const nextSession: AuthSession = {
     userId: syncedSession.userId,
     username: syncedSession.username,
+    syncToken: syncedSession.syncToken,
     loggedInAt: Date.now(),
   };
 
-  if (localUser.id !== syncedSession.userId) {
-    await ensureLocalUser(syncedSession.userId, syncedSession.username, localUser.passwordHash);
-  }
+  await ensureLocalUser(syncedSession.userId, syncedSession.username, localUser.passwordHash);
 
   setAuthSession(nextSession);
   return nextSession;
@@ -205,10 +242,20 @@ export async function registerAccount(username: string, password: string) {
 
 export async function loginAccount(username: string, password: string) {
   const normalized = normalizeUsername(username);
+  const passwordHash = await hashPassword(password);
+  const localUser = await userRepository.getByUsername(normalized);
+  if (localUser) {
+    await requestJson<{ session?: AuthSession }>("/auth/sync-local-user", {
+      userId: localUser.id,
+      username: normalized,
+      passwordHash,
+    }).catch(() => undefined);
+  }
+
   try {
     const payload = await requestJson<{ session?: AuthSession }>("/auth/login", { username: normalized, password });
     const session = assertSession(payload);
-    await ensureLocalUser(session.userId, session.username, await hashPassword(password));
+    await ensureLocalUser(session.userId, session.username, passwordHash);
     setAuthSession(session);
     return session;
   } catch (error) {
@@ -233,7 +280,7 @@ export async function loginAccount(username: string, password: string) {
 
     const retry = await requestJson<{ session?: AuthSession }>("/auth/login", { username: normalized, password });
     const session = assertSession(retry);
-    await ensureLocalUser(session.userId, session.username, await hashPassword(password));
+    await ensureLocalUser(session.userId, session.username, passwordHash);
     setAuthSession(session);
     return session;
   }

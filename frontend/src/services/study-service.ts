@@ -51,6 +51,20 @@ function clearStoredSession() {
   removeStorage(withUserScopedKey(ACTIVE_LEARN_SESSION_KEY));
 }
 
+function closeStoredSession(session: ActiveLearnSession, closedAt = Date.now()) {
+  saveStoredSession({
+    ...session,
+    wordIds: [],
+    currentIndex: 0,
+    dwellStartedAt: closedAt,
+    updatedAt: closedAt,
+  });
+}
+
+function isStillLearnable(word: WordItem) {
+  return word.status === "unseen" || word.status === "learning";
+}
+
 function getLearnResultScore(result: LearnResult) {
   if (result === "know") return 3;
   if (result === "vague") return 1;
@@ -80,23 +94,36 @@ export async function getLearnSessionState() {
     return null;
   }
   const words = await loadWords(snapshot.wordIds);
-  if (!words.length) {
-    clearStoredSession();
+  const learnableWords = words.filter(isStillLearnable);
+  if (!learnableWords.length) {
+    if (snapshot.wordIds.length) {
+      closeStoredSession(snapshot);
+    }
     return null;
   }
 
-  if (words.length !== snapshot.wordIds.length || snapshot.currentIndex >= words.length) {
+  if (learnableWords.length !== snapshot.wordIds.length || snapshot.currentIndex >= learnableWords.length) {
+    const now = Date.now();
     const nextSnapshot: ActiveLearnSession = {
       ...snapshot,
-      wordIds: words.map((word) => word.id),
-      currentIndex: Math.min(snapshot.currentIndex, words.length - 1),
-      updatedAt: Date.now(),
+      wordIds: learnableWords.map((word) => word.id),
+      currentIndex: Math.min(snapshot.currentIndex, learnableWords.length - 1),
+      updatedAt: now,
     };
     saveStoredSession(nextSnapshot);
-    return { snapshot: nextSnapshot, words };
+    await sessionRepository.put({
+      id: nextSnapshot.sessionId,
+      userId: requireCurrentUserId(),
+      type: "learn",
+      wordIds: nextSnapshot.wordIds,
+      startedAt: nextSnapshot.startedAt,
+      progressIndex: nextSnapshot.currentIndex,
+      updatedAt: now,
+    });
+    return { snapshot: nextSnapshot, words: learnableWords };
   }
 
-  return { snapshot, words };
+  return { snapshot, words: learnableWords };
 }
 
 export async function startLearnSession(options: StartLearnOptions = {}) {
@@ -147,6 +174,7 @@ export async function startLearnSession(options: StartLearnOptions = {}) {
     wordIds: snapshot.wordIds,
     startedAt,
     progressIndex: 0,
+    updatedAt: startedAt,
   };
   await sessionRepository.put(sessionRecord);
   saveStoredSession(snapshot);
@@ -231,8 +259,9 @@ export async function submitLearnFeedback(result: LearnResult) {
       durationSec: Math.round((now - snapshot.startedAt) / 1000),
       progressIndex: snapshot.wordIds.length,
       summary,
+      updatedAt: now,
     });
-    clearStoredSession();
+    closeStoredSession(snapshot, now);
     return { completed: true as const, updatedWord, summary };
   }
 
@@ -254,6 +283,7 @@ export async function submitLearnFeedback(result: LearnResult) {
     wordIds: nextSnapshot.wordIds,
     startedAt: snapshot.startedAt,
     progressIndex: nextSnapshot.currentIndex,
+    updatedAt: now,
   });
   saveStoredSession(nextSnapshot);
 
@@ -282,6 +312,7 @@ export async function skipCurrentLearnWord() {
     wordIds: nextWordIds,
     startedAt: snapshot.startedAt,
     progressIndex: snapshot.currentIndex,
+    updatedAt: nextSnapshot.updatedAt,
   });
   saveStoredSession(nextSnapshot);
   return nextSnapshot;
@@ -302,8 +333,9 @@ export async function abandonLearnSession() {
     durationSec: Math.round((now - snapshot.startedAt) / 1000),
     progressIndex: snapshot.currentIndex,
     abandoned: true,
+    updatedAt: now,
   });
-  clearStoredSession();
+  closeStoredSession(snapshot, now);
 }
 
 export async function toggleWordStar(wordId: string) {

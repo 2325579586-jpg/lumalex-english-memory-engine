@@ -1,4 +1,5 @@
 const { ensureSchema, getSql } = require("../_lib/db");
+const { verifySyncAuth } = require("../_lib/auth");
 const { emptyCollections, isCloudRelevantWord, SYNC_COLLECTIONS } = require("../_lib/sync");
 const { handleOptions, readJsonBody, sendJson } = require("../_lib/http");
 
@@ -8,11 +9,17 @@ module.exports = async function handler(req, res) {
 
   const payload = await readJsonBody(req);
   const userId = String(payload.userId || "").trim();
+  const syncToken = String(payload.syncToken || "").trim();
   if (!userId) return sendJson(res, 400, { error: "userId is required" });
+  if (!syncToken) return sendJson(res, 401, { error: "Unauthorized" });
 
   try {
     await ensureSchema();
     const sql = getSql();
+    if (!(await verifySyncAuth(sql, userId, syncToken))) {
+      return sendJson(res, 401, { error: "Unauthorized" });
+    }
+
     const rows = await sql`
       SELECT collection, payload_json
       FROM cloud_sync_records

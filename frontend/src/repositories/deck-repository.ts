@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { requireCurrentUserId } from "@/services/auth-session";
-import { scheduleCloudDataSync } from "@/services/cloud-sync-service";
+import { recordCloudDeletion, scheduleCloudDataSync } from "@/services/cloud-sync-service";
 import type { Deck } from "@/types/domain";
 
 export const deckRepository = {
@@ -60,6 +60,7 @@ export const deckRepository = {
     if (!deck || deck.sourceType !== "custom") {
       throw new Error("只能删除当前账号下的自定义词库。");
     }
+    recordCloudDeletion("decks", deckId);
     await db.decks.delete(deckId);
     scheduleCloudDataSync();
   },

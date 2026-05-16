@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { requireCurrentUserId } from "@/services/auth-session";
-import { scheduleCloudDataSync } from "@/services/cloud-sync-service";
+import { recordCloudDeletion, scheduleCloudDataSync } from "@/services/cloud-sync-service";
 import type { LibraryFilters, WordItem, WordStatus } from "@/types/domain";
 
 function applyQuery(items: WordItem[], filters: LibraryFilters) {
@@ -65,12 +65,14 @@ export const wordRepository = {
     scheduleCloudDataSync();
   },
   async delete(ids: string[]) {
+    recordCloudDeletion("words", ids);
     await db.words.bulkDelete(ids);
     scheduleCloudDataSync();
   },
   async deleteByDeck(deckId: string) {
     const userId = requireCurrentUserId();
     const items = await db.words.where("[userId+deckId]").equals([userId, deckId]).primaryKeys();
+    recordCloudDeletion("words", items as string[]);
     await db.words.bulkDelete(items);
     scheduleCloudDataSync();
   },

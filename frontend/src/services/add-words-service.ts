@@ -4,7 +4,7 @@ import { reviewRecordRepository } from "@/repositories/review-record-repository"
 import { wordRepository } from "@/repositories/word-repository";
 import { apiUrl } from "@/services/api-base";
 import { requireCurrentUserId } from "@/services/auth-session";
-import type { Deck, WordItem } from "@/types/domain";
+import type { Deck, DerivedWord, WordItem } from "@/types/domain";
 
 export type SingleWordInput = {
   term: string;
@@ -14,6 +14,9 @@ export type SingleWordInput = {
   exampleTranslation?: string;
   memoryHint?: string;
   tags?: string;
+  synonyms?: string;
+  antonyms?: string;
+  derivedForms?: string | DerivedWord[];
   partOfSpeech?: string;
   pronunciationUk?: string;
   pronunciationUs?: string;
@@ -28,6 +31,9 @@ export type ParsedDraft = {
   phonetic?: string;
   partOfSpeech?: string;
   tags?: string[];
+  synonyms?: string[];
+  antonyms?: string[];
+  derivedForms?: DerivedWord[];
   example?: string;
   exampleTranslation?: string;
   memoryHint?: string;
@@ -52,6 +58,9 @@ export type EnrichedDraft = {
   pronunciationUk: string;
   pronunciationUs: string;
   tags: string[];
+  synonyms: string[];
+  antonyms: string[];
+  derivedForms: DerivedWord[];
 };
 
 function normalizeTerm(term: string) {
@@ -67,6 +76,48 @@ function splitTags(tags?: string) {
     .split(/[，,;；]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function splitWordList(value?: string) {
+  return (value || "")
+    .split(/[，,;；、\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeDerivedPos(value: string): DerivedWord["pos"] {
+  const clean = value.trim().toLowerCase();
+  if (["noun", "n", "n."].includes(clean)) return "noun";
+  if (["verb", "v", "v.", "vi", "vt", "vi.", "vt."].includes(clean)) return "verb";
+  if (["adjective", "adj", "adj."].includes(clean)) return "adjective";
+  if (["adverb", "adv", "adv."].includes(clean)) return "adverb";
+  if (["phrase", "phr"].includes(clean)) return "phrase";
+  return "other";
+}
+
+function normalizeDerivedForms(value: unknown): DerivedWord[] {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === "string") return { term: item.trim(), pos: "other" as const };
+        const source = item as Record<string, unknown>;
+        return {
+          term: String(source.term || source.word || "").trim(),
+          pos: normalizeDerivedPos(String(source.pos || source.partOfSpeech || "other")),
+          meaning: String(source.meaning || source.meaningZh || "").trim() || undefined,
+        };
+      })
+      .filter((item) => item.term);
+  }
+  if (typeof value === "string") {
+    return value
+      .split(/[，,;；、\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .map((term) => ({ term, pos: "other" as const }));
+  }
+  return [];
 }
 
 function inferDifficultyTag(term: string) {
@@ -109,8 +160,9 @@ function draftToWord(draft: ParsedDraft, deckId: string): WordItem {
     exampleTranslation: draft.exampleTranslation || "",
     memoryHint: draft.memoryHint || "",
     roots: [],
-    synonyms: [],
-    antonyms: [],
+    derivedForms: draft.derivedForms || [],
+    synonyms: draft.synonyms || [],
+    antonyms: draft.antonyms || [],
     collocations: [],
     imageUrl: "",
     tags: draft.tags || [],
@@ -151,6 +203,9 @@ function resetWordForRelearning(existingWord: WordItem, draft: ParsedDraft, deck
     example: draft.example || "",
     exampleTranslation: draft.exampleTranslation || "",
     memoryHint: draft.memoryHint || "",
+    derivedForms: draft.derivedForms || existingWord.derivedForms || [],
+    synonyms: draft.synonyms || existingWord.synonyms,
+    antonyms: draft.antonyms || existingWord.antonyms,
     tags: draft.tags || [],
     deckId,
     difficultyLevel: draft.type === "phrase" ? 3 : 2,
@@ -187,6 +242,9 @@ function mapSingleInputToDraft(input: SingleWordInput): ParsedDraft {
     example: input.example?.trim() || "",
     exampleTranslation: input.exampleTranslation?.trim() || "",
     memoryHint: input.memoryHint?.trim() || "",
+    synonyms: splitWordList(input.synonyms),
+    antonyms: splitWordList(input.antonyms),
+    derivedForms: normalizeDerivedForms(input.derivedForms),
     pronunciationUk: input.pronunciationUk?.trim() || "",
     pronunciationUs: input.pronunciationUs?.trim() || "",
   };
@@ -206,6 +264,9 @@ function fallbackEnrichment(term: string): EnrichedDraft {
     pronunciationUk: "",
     pronunciationUs: "",
     tags: [inferDifficultyTag(term), "自动补全"],
+    synonyms: [],
+    antonyms: [],
+    derivedForms: [],
   };
 }
 
@@ -253,6 +314,9 @@ export async function requestAutoEnrich(term: string): Promise<EnrichedDraft> {
       exampleZh?: string;
       mnemonicZh?: string;
       audioUrl?: string;
+      synonyms?: string[] | string;
+      antonyms?: string[] | string;
+      wordForms?: Array<{ term?: string; word?: string; pos?: string; partOfSpeech?: string; meaning?: string; meaningZh?: string }>;
     };
 
     const fallback = fallbackEnrichment(clean);
@@ -269,6 +333,9 @@ export async function requestAutoEnrich(term: string): Promise<EnrichedDraft> {
       pronunciationUk: payload.audioUrl || "",
       pronunciationUs: payload.audioUrl || "",
       tags: [inferDifficultyTag(clean), "自动补全"],
+      synonyms: splitWordList(Array.isArray(payload.synonyms) ? payload.synonyms.join("，") : payload.synonyms),
+      antonyms: splitWordList(Array.isArray(payload.antonyms) ? payload.antonyms.join("，") : payload.antonyms),
+      derivedForms: normalizeDerivedForms(payload.wordForms),
     };
   } catch (error) {
     throw error instanceof Error ? error : new Error("\u81ea\u52a8\u8865\u5168\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002");
@@ -318,6 +385,9 @@ export async function quickAddTermToDeck(term: string, deckId: string) {
       partOfSpeech: enriched.partOfSpeech,
       pronunciationUk: enriched.pronunciationUk,
       pronunciationUs: enriched.pronunciationUs,
+      synonyms: enriched.synonyms.join("，"),
+      antonyms: enriched.antonyms.join("，"),
+      derivedForms: enriched.derivedForms.map((item) => item.term).join("，"),
       deckId,
     });
     return { status: "reset" as const, word: updated };
@@ -335,10 +405,48 @@ export async function quickAddTermToDeck(term: string, deckId: string) {
     partOfSpeech: enriched.partOfSpeech,
     pronunciationUk: enriched.pronunciationUk,
     pronunciationUs: enriched.pronunciationUs,
+    synonyms: enriched.synonyms.join("，"),
+    antonyms: enriched.antonyms.join("，"),
+    derivedForms: enriched.derivedForms.map((item) => item.term).join("，"),
     deckId,
   });
 
   return { status: "created" as const, word: created };
+}
+
+export async function enrichExistingWordRelations(onProgress?: (done: number, total: number, currentTerm: string) => void) {
+  const words = await wordRepository.list();
+  const targets = words.filter((word) => !(word.derivedForms || []).length || !word.synonyms.length);
+  let updated = 0;
+
+  for (const word of targets) {
+    onProgress?.(updated, targets.length, word.term);
+    try {
+      const enriched = await requestAutoEnrich(word.term);
+      await wordRepository.put({
+        ...word,
+        phonetic: word.phonetic || enriched.phonetic,
+        partOfSpeech: word.partOfSpeech || enriched.partOfSpeech,
+        meanings: word.meanings.length ? word.meanings : enriched.meanings,
+        example: word.example || enriched.example,
+        exampleTranslation: word.exampleTranslation || enriched.exampleTranslation,
+        memoryHint: word.memoryHint || enriched.memoryHint,
+        pronunciationUk: word.pronunciationUk || enriched.pronunciationUk,
+        pronunciationUs: word.pronunciationUs || enriched.pronunciationUs,
+        derivedForms: (word.derivedForms || []).length ? word.derivedForms : enriched.derivedForms,
+        synonyms: word.synonyms.length ? word.synonyms : enriched.synonyms,
+        antonyms: word.antonyms.length ? word.antonyms : enriched.antonyms,
+        tags: Array.from(new Set([...word.tags, ...enriched.tags])),
+        updatedAt: Date.now(),
+      });
+      updated += 1;
+    } catch {
+      // Keep going; one bad dictionary/AI response should not block the whole library.
+    }
+  }
+
+  onProgress?.(updated, targets.length, "");
+  return { total: targets.length, updated };
 }
 
 export function parseBatchText(text: string): ParseResult {

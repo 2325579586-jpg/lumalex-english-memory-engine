@@ -28,6 +28,8 @@ __pycache__/
 backend/__pycache__/
 .pytest_cache/
 .cache/
+.npm-cache/
+frontend/.npm-cache/
 
 # Local databases and logs
 *.db

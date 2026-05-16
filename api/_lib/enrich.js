@@ -43,6 +43,59 @@ function extractAudioUrl(entry) {
   return "";
 }
 
+function uniqueList(items, forbidden = []) {
+  const blocked = new Set(forbidden.map(normalizeText));
+  const seen = new Set();
+  return items
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .filter((item) => {
+      const key = normalizeText(item);
+      if (!key || blocked.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function normalizeWordForms(value, forbidden = []) {
+  const blocked = new Set(forbidden.map(normalizeText));
+  const source = Array.isArray(value) ? value : [];
+  const seen = new Set();
+  return source
+    .map((item) => ({
+      term: String(item?.term || item?.word || "").trim(),
+      pos: String(item?.pos || item?.partOfSpeech || "other").trim().toLowerCase(),
+      meaning: String(item?.meaning || item?.meaningZh || "").trim(),
+    }))
+    .filter((item) => item.term)
+    .map((item) => ({
+      ...item,
+      pos: ["noun", "verb", "adjective", "adverb", "phrase"].includes(item.pos) ? item.pos : "other",
+    }))
+    .filter((item) => {
+      const key = normalizeText(item.term);
+      if (!key || blocked.has(key) || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 10);
+}
+
+function extractDictionaryRelated(entry, key) {
+  if (!entry || typeof entry !== "object") return [];
+  const meanings = Array.isArray(entry.meanings) ? entry.meanings : [];
+  const values = [];
+  for (const meaning of meanings) {
+    if (Array.isArray(meaning?.[key])) values.push(...meaning[key]);
+    const definitions = Array.isArray(meaning?.definitions) ? meaning.definitions : [];
+    for (const definition of definitions) {
+      if (Array.isArray(definition?.[key])) values.push(...definition[key]);
+    }
+  }
+  return uniqueList(values, [entry.word]);
+}
+
 function fallbackEnrichment(text) {
   const kind = detectKind(text);
   const meaning = buildFallbackMeaning(text, kind);
@@ -56,6 +109,9 @@ function fallbackEnrichment(text) {
     exampleZh: buildFallbackExampleZh(text),
     mnemonicEn: `Connect "${text}" with a concrete scene.`,
     mnemonicZh: buildFallbackMnemonic(text, meaning),
+    wordForms: [],
+    synonyms: [],
+    antonyms: [],
     audioUrl: "",
     provider: "fallback",
   };
@@ -69,8 +125,11 @@ async function generateWithQwen(text, kind) {
   const baseUrl = String(process.env.COMPAT_BASE_URL || "https://api.openai.com/v1").trim().replace(/\/+$/, "");
   const systemPrompt = [
     "You generate clean English vocabulary study cards.",
-    "Return strict JSON with keys: phonetic, pos, meaning, exampleEn, exampleZh, mnemonicEn, mnemonicZh.",
+    "Return strict JSON with keys: phonetic, pos, meaning, exampleEn, exampleZh, mnemonicEn, mnemonicZh, wordForms, synonyms, antonyms.",
     "meaning must be concise Simplified Chinese, not English.",
+    "wordForms must be an array of related derivational forms with keys term, pos, meaning. Use pos noun, verb, adjective, adverb, phrase, or other.",
+    "Include useful word-family forms such as noun, verb, adjective, and adverb when they exist.",
+    "synonyms and antonyms must be arrays of plain English words or short phrases, max 8 each.",
     "exampleEn must be natural English. exampleZh must be clear Chinese.",
     "mnemonicZh must be Chinese. mnemonicEn must be short English support text.",
     "For phrases, use pos='phrase'.",
@@ -119,6 +178,9 @@ async function generateWithQwen(text, kind) {
     exampleZh: parsed.exampleZh || buildFallbackExampleZh(text),
     mnemonicEn: parsed.mnemonicEn || `Connect "${text}" with a concrete scene.`,
     mnemonicZh: parsed.mnemonicZh || buildFallbackMnemonic(text, meaning),
+    wordForms: normalizeWordForms(parsed.wordForms, [text]),
+    synonyms: uniqueList(Array.isArray(parsed.synonyms) ? parsed.synonyms : [], [text]),
+    antonyms: uniqueList(Array.isArray(parsed.antonyms) ? parsed.antonyms : [], [text]),
     audioUrl: extractAudioUrl(dictionaryEntry),
     provider: "compatible-llm",
   };
@@ -142,6 +204,9 @@ async function enrichWord(text, kind) {
             (Array.isArray(dictionaryEntry.meanings) && dictionaryEntry.meanings[0]?.partOfSpeech
               ? dictionaryEntry.meanings[0].partOfSpeech
               : "n."),
+          synonyms: extractDictionaryRelated(dictionaryEntry, "synonyms"),
+          antonyms: extractDictionaryRelated(dictionaryEntry, "antonyms"),
+          wordForms: [],
           audioUrl: extractAudioUrl(dictionaryEntry),
           provider: "dictionaryapi",
         };

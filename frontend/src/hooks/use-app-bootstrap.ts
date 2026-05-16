@@ -47,7 +47,7 @@ export function useAppBootstrap() {
     }
 
     const syncNow = () => {
-      void syncCloudData().catch(() => undefined);
+      void syncCloudData({ pushFirst: true }).catch(() => undefined);
     };
     const syncWhenVisible = () => {
       if (document.visibilityState === "visible") {

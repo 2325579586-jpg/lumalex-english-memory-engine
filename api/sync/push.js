@@ -1,4 +1,5 @@
 const { ensureSchema, getSql } = require("../_lib/db");
+const { verifySyncAuth } = require("../_lib/auth");
 const { SYNC_COLLECTIONS, getPayloadTimestamp, getSyncItemId, isCloudRelevantWord } = require("../_lib/sync");
 const { handleOptions, readJsonBody, sendJson } = require("../_lib/http");
 
@@ -8,15 +9,21 @@ module.exports = async function handler(req, res) {
 
   const payload = await readJsonBody(req);
   const userId = String(payload.userId || "").trim();
+  const syncToken = String(payload.syncToken || "").trim();
   const collections = payload.collections && typeof payload.collections === "object" ? payload.collections : null;
-  const replace = Boolean(payload.replace);
+  const replace = Boolean(payload.replace && payload.allowDestructiveReplace);
 
   if (!userId) return sendJson(res, 400, { error: "userId is required" });
+  if (!syncToken) return sendJson(res, 401, { error: "Unauthorized" });
   if (!collections) return sendJson(res, 400, { error: "collections must be an object" });
 
   try {
     await ensureSchema();
     const sql = getSql();
+    if (!(await verifySyncAuth(sql, userId, syncToken))) {
+      return sendJson(res, 401, { error: "Unauthorized" });
+    }
+
     let saved = 0;
 
     for (const collection of Object.keys(collections)) {
@@ -48,6 +55,34 @@ module.exports = async function handler(req, res) {
       for (const rawItem of items) {
         if (!rawItem || typeof rawItem !== "object") continue;
         const item = { ...rawItem, userId };
+        if (collection === "deletions") {
+          const targetCollection = String(item.collection || "").trim();
+          const targetItemId = String(item.itemId || "").trim();
+          const deletedAt = Number(item.deletedAt || item.updatedAt || Date.now());
+          if (!SYNC_COLLECTIONS.includes(targetCollection) || targetCollection === "deletions" || !targetItemId) {
+            continue;
+          }
+
+          const target = await sql`
+            SELECT payload_json, updated_at
+            FROM cloud_sync_records
+            WHERE user_id = ${userId} AND collection = ${targetCollection} AND item_id = ${targetItemId}
+            LIMIT 1
+          `;
+          if (target.length) {
+            item.deletedPayload = target[0].payload_json;
+          }
+          if (!target.length || new Date(target[0].updated_at).getTime() <= deletedAt) {
+            await sql`
+              DELETE FROM cloud_sync_records
+              WHERE user_id = ${userId} AND collection = ${targetCollection} AND item_id = ${targetItemId}
+            `;
+          }
+
+          item.id = getSyncItemId("deletions", item);
+          item.deletedAt = deletedAt;
+          item.updatedAt = deletedAt;
+        }
         if (collection === "settings") {
           item.id = userId;
         }
@@ -57,6 +92,18 @@ module.exports = async function handler(req, res) {
 
         const itemId = getSyncItemId(collection, item);
         const itemUpdatedAt = getPayloadTimestamp(item);
+        if (collection !== "deletions") {
+          const deletionId = `${collection}:${itemId}`;
+          const deletion = await sql`
+            SELECT updated_at
+            FROM cloud_sync_records
+            WHERE user_id = ${userId} AND collection = 'deletions' AND item_id = ${deletionId}
+            LIMIT 1
+          `;
+          if (deletion.length && new Date(deletion[0].updated_at).getTime() >= itemUpdatedAt.getTime()) {
+            continue;
+          }
+        }
         const existing = await sql`
           SELECT updated_at
           FROM cloud_sync_records

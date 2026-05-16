@@ -21,6 +21,12 @@ export type ErrorTag =
   | "collocation_issue"
   | "pronunciation_issue";
 
+export type DerivedWord = {
+  term: string;
+  pos: "noun" | "verb" | "adjective" | "adverb" | "phrase" | "other";
+  meaning?: string;
+};
+
 export type AppUser = {
   id: string;
   username: string;
@@ -32,6 +38,7 @@ export type AppUser = {
 export type AuthSession = {
   userId: string;
   username: string;
+  syncToken?: string;
   loggedInAt: number;
 };
 
@@ -50,6 +57,7 @@ export type WordItem = {
   exampleTranslation: string;
   memoryHint: string;
   roots: string[];
+  derivedForms: DerivedWord[];
   synonyms: string[];
   antonyms: string[];
   collocations: string[];
@@ -122,6 +130,7 @@ export type SessionRecord = {
   type: SessionType;
   wordIds: string[];
   startedAt: number;
+  updatedAt?: number;
   endedAt?: number;
   durationSec?: number;
   summary?: SessionSummary;
@@ -144,6 +153,7 @@ export type UserSettings = {
   reviewModeWeights: Record<ReviewMode, number>;
   language: "zh" | "en";
   theme: "dark" | "light";
+  updatedAt?: number;
 };
 
 export type LibraryFilters = {

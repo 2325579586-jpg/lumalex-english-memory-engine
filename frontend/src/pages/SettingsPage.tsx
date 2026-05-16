@@ -102,7 +102,7 @@ export function SettingsPage() {
     setMessage("");
     setSyncing(true);
     try {
-      await syncCloudData();
+      await syncCloudData({ pushFirst: true });
       await refreshSyncedAt();
       resetSettings(session?.userId);
       await hydrateSettings();
@@ -117,7 +117,7 @@ export function SettingsPage() {
   async function handleLogout() {
     setMessage("");
     try {
-      await syncCloudData().catch(() => undefined);
+      await syncCloudData({ pushFirst: true }).catch(() => undefined);
     } finally {
       logout();
     }
@@ -586,7 +586,14 @@ export function SettingsPage() {
         </CardHeader>
         <CardContent className="space-y-6">
           {message && (
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+            <div
+              className={cn(
+                "rounded-2xl border px-4 py-3 text-sm shadow-sm",
+                /fail|error|失败|错误/i.test(message)
+                  ? "border-red-500/40 bg-red-50 text-red-950 dark:bg-red-500/15 dark:text-red-50"
+                  : "border-emerald-500/40 bg-emerald-50 text-emerald-950 dark:bg-emerald-500/15 dark:text-emerald-50",
+              )}
+            >
               {message}
             </div>
           )}

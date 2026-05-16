@@ -67,7 +67,7 @@ export async function initLocalDb() {
   await ensureSystemDecks();
   await ensureUserSettings(userId);
   await syncSystemLexicons(false, { includeWords: false }).catch(() => undefined);
-  await Promise.race([syncCloudData().catch(() => undefined), wait(1800)]);
+  await Promise.race([syncCloudData({ pushFirst: true }).catch(() => undefined), wait(1800)]);
 
   scheduleCloudDataSync(100);
   window.setTimeout(() => {

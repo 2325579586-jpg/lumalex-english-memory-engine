@@ -1,3 +1,4 @@
+import type { Table } from "dexie";
 import { db, type StoredSettings } from "@/lib/db";
 import { apiUrl } from "@/services/api-base";
 import { getAuthSession, withUserScopedKey } from "@/services/auth-session";
@@ -22,6 +23,16 @@ type SyncCollections = {
   sessions: SessionRecord[];
   settings: UserSettings[];
   activeSessions: ActiveSessionSyncItem[];
+  deletions: DeletionSyncItem[];
+};
+
+type DeletionSyncItem = {
+  id: string;
+  userId: string;
+  collection: Exclude<keyof SyncCollections, "deletions">;
+  itemId: string;
+  deletedAt: number;
+  updatedAt: number;
 };
 
 export type CloudSyncStatus = "idle" | "queued" | "syncing" | "success" | "error";
@@ -33,9 +44,13 @@ export type CloudSyncState = {
 };
 
 const CLOUD_SYNC_STATE_EVENT = "lumalex:cloud-sync-state";
+const DELETION_LOG_KEY = "cloud_deletion_log";
 
 let syncTimer: number | undefined;
 let syncing = false;
+let currentSyncPromise: Promise<void> | undefined;
+let pendingSync = false;
+let pendingPushFirst = false;
 let syncState: CloudSyncState = { status: "idle" };
 
 function emitSyncState(next: CloudSyncState) {
@@ -73,6 +88,7 @@ function emptyCollections(): SyncCollections {
     sessions: [],
     settings: [],
     activeSessions: [],
+    deletions: [],
   };
 }
 
@@ -91,6 +107,10 @@ async function postJson<T>(path: string, body: Record<string, unknown>) {
 
 function currentUserId() {
   return getAuthSession()?.userId || null;
+}
+
+function currentSyncToken() {
+  return getAuthSession()?.syncToken || null;
 }
 
 function getSnapshotTimestamp(snapshot: unknown) {
@@ -119,6 +139,35 @@ function collectActiveSessions(userId: string): ActiveSessionSyncItem[] {
   ].filter(Boolean) as ActiveSessionSyncItem[];
 }
 
+function readDeletionLog(userId: string): DeletionSyncItem[] {
+  return readStorage<DeletionSyncItem[]>(withUserScopedKey(DELETION_LOG_KEY), []).filter(
+    (item) => item.userId === userId && Boolean(item.collection) && Boolean(item.itemId),
+  );
+}
+
+function writeDeletionLog(userId: string, items: DeletionSyncItem[]) {
+  const deduped = Array.from(new Map(items.map((item) => [item.id, item])).values())
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 500);
+  writeStorage(withUserScopedKey(DELETION_LOG_KEY), deduped);
+}
+
+export function recordCloudDeletion(collection: DeletionSyncItem["collection"], itemIds: string | string[]) {
+  const userId = currentUserId();
+  if (!userId) return;
+  const now = Date.now();
+  const ids = Array.isArray(itemIds) ? itemIds : [itemIds];
+  const next: DeletionSyncItem[] = ids.filter(Boolean).map((itemId) => ({
+    id: `${collection}:${itemId}`,
+    userId,
+    collection,
+    itemId,
+    deletedAt: now,
+    updatedAt: now,
+  }));
+  writeDeletionLog(userId, [...readDeletionLog(userId), ...next]);
+}
+
 async function collectLocalData(userId: string): Promise<SyncCollections> {
   const [decks, words, learnRecords, reviewRecords, sessions, settings] = await Promise.all([
     db.decks.toArray(),
@@ -135,10 +184,9 @@ async function collectLocalData(userId: string): Promise<SyncCollections> {
     learnRecords: learnRecords.filter((record) => record.userId === userId),
     reviewRecords: reviewRecords.filter((record) => record.userId === userId),
     sessions: sessions.filter((session) => session.userId === userId),
-    settings: settings
-      .filter((item) => item.userId === userId)
-      .map(({ id: _id, ...setting }) => setting),
+    settings: settings.filter((item) => item.userId === userId).map(({ id: _id, ...setting }) => setting),
     activeSessions: collectActiveSessions(userId),
+    deletions: readDeletionLog(userId),
   };
 }
 
@@ -150,7 +198,7 @@ function normalizeCollections(userId: string, collections?: Partial<SyncCollecti
   const source = { ...emptyCollections(), ...(collections || {}) };
   return {
     decks: source.decks.map((deck) => ({ ...deck, userId: deck.sourceType === "system" ? deck.userId : userId })),
-    words: source.words.map((word) => ({ ...word, userId })),
+    words: source.words.map((word) => ({ ...word, derivedForms: word.derivedForms || [], userId })),
     learnRecords: source.learnRecords.map((record) => ({ ...record, userId })),
     reviewRecords: source.reviewRecords.map((record) => ({ ...record, userId })),
     sessions: source.sessions.map((session) => ({ ...session, userId })),
@@ -158,31 +206,147 @@ function normalizeCollections(userId: string, collections?: Partial<SyncCollecti
     activeSessions: source.activeSessions
       .filter((item) => item.id === "learn" || item.id === "review")
       .map((item) => ({ ...item, userId })),
+    deletions: source.deletions
+      .filter((item) => item.collection && item.itemId)
+      .map((item) => ({ ...item, id: item.id || `${item.collection}:${item.itemId}`, userId })),
   };
 }
 
-async function applyRemoteData(userId: string, collections?: Partial<SyncCollections>, options: { pruneMissing?: boolean } = {}) {
+function itemTimestamp(item: unknown) {
+  if (!item || typeof item !== "object") return 0;
+  const source = item as Record<string, unknown>;
+  const value =
+    source.updatedAt ||
+    source.lastUpdatedAt ||
+    source.lastStudiedAt ||
+    source.lastReviewedAt ||
+    source.endedAt ||
+    source.createdAt ||
+    source.startedAt;
+  return typeof value === "number" ? value : 0;
+}
+
+async function bulkPutRemoteNewer<T extends { id: string }>(table: Table<T, string>, remoteItems: T[]) {
+  if (!remoteItems.length) return;
+  const localItems = await table.bulkGet(remoteItems.map((item) => item.id));
+  const newerItems = remoteItems.filter((remoteItem, index) => {
+    const localItem = localItems[index];
+    return !localItem || itemTimestamp(remoteItem) >= itemTimestamp(localItem);
+  });
+  if (newerItems.length) {
+    await table.bulkPut(newerItems);
+  }
+}
+
+function isSnapshotWithWordIds(snapshot: unknown): snapshot is Record<string, unknown> & { wordIds: string[] } {
+  return Boolean(snapshot && typeof snapshot === "object" && Array.isArray((snapshot as { wordIds?: unknown }).wordIds));
+}
+
+function closeActiveSnapshot(snapshot: Record<string, unknown>, timestampKey: "dwellStartedAt" | "questionStartedAt") {
+  const now = Date.now();
+  return {
+    ...snapshot,
+    wordIds: [],
+    currentIndex: 0,
+    [timestampKey]: now,
+    updatedAt: now,
+  };
+}
+
+async function reconcileActiveLearnSession(userId: string) {
+  const scopedKey = withUserScopedKey(ACTIVE_LEARN_SESSION_KEY);
+  const snapshot = readStorage<unknown | null>(scopedKey, null);
+  if (!isSnapshotWithWordIds(snapshot) || !snapshot.wordIds.length) return;
+
+  const words = await db.words.bulkGet(snapshot.wordIds);
+  const activeWordIds = snapshot.wordIds.filter((_, index) => {
+    const word = words[index];
+    return word?.userId === userId && (word.status === "unseen" || word.status === "learning");
+  });
+
+  if (!activeWordIds.length) {
+    writeStorage(scopedKey, closeActiveSnapshot(snapshot, "dwellStartedAt"));
+    return;
+  }
+
+  const currentIndex = typeof snapshot.currentIndex === "number" ? snapshot.currentIndex : 0;
+  if (activeWordIds.length !== snapshot.wordIds.length || currentIndex >= activeWordIds.length) {
+    writeStorage(scopedKey, {
+      ...snapshot,
+      wordIds: activeWordIds,
+      currentIndex: Math.min(currentIndex, activeWordIds.length - 1),
+      updatedAt: Date.now(),
+    });
+  }
+}
+
+async function reconcileActiveReviewSession(userId: string) {
+  const scopedKey = withUserScopedKey(ACTIVE_REVIEW_SESSION_KEY);
+  const snapshot = readStorage<unknown | null>(scopedKey, null);
+  if (!isSnapshotWithWordIds(snapshot) || !snapshot.wordIds.length) return;
+
+  const words = await db.words.bulkGet(snapshot.wordIds);
+  const activeWordIds = snapshot.wordIds.filter((_, index) => {
+    const word = words[index];
+    return word?.userId === userId && word.status === "reviewing";
+  });
+
+  if (!activeWordIds.length) {
+    writeStorage(scopedKey, closeActiveSnapshot(snapshot, "questionStartedAt"));
+    return;
+  }
+
+  const currentIndex = typeof snapshot.currentIndex === "number" ? snapshot.currentIndex : 0;
+  if (activeWordIds.length !== snapshot.wordIds.length || currentIndex >= activeWordIds.length) {
+    writeStorage(scopedKey, {
+      ...snapshot,
+      wordIds: activeWordIds,
+      currentIndex: Math.min(currentIndex, activeWordIds.length - 1),
+      updatedAt: Date.now(),
+    });
+  }
+}
+
+async function reconcileActiveSessions(userId: string) {
+  await Promise.all([reconcileActiveLearnSession(userId), reconcileActiveReviewSession(userId)]);
+}
+
+async function getLocalDeletionTargetTimestamp(userId: string, deletion: DeletionSyncItem) {
+  if (deletion.collection === "words") return itemTimestamp(await db.words.get(deletion.itemId));
+  if (deletion.collection === "decks") return itemTimestamp(await db.decks.get(deletion.itemId));
+  if (deletion.collection === "learnRecords") return itemTimestamp(await db.learnRecords.get(deletion.itemId));
+  if (deletion.collection === "reviewRecords") return itemTimestamp(await db.reviewRecords.get(deletion.itemId));
+  if (deletion.collection === "sessions") return itemTimestamp(await db.sessions.get(deletion.itemId));
+  if (deletion.collection === "settings") return itemTimestamp(await db.settings.get(userId));
+  return 0;
+}
+
+async function applyRemoteData(userId: string, collections?: Partial<SyncCollections>) {
   const normalized = normalizeCollections(userId, collections);
   await db.transaction("rw", [db.decks, db.words, db.learnRecords, db.reviewRecords, db.sessions, db.settings], async () => {
-    if (options.pruneMissing) {
-      const remoteCustomWordIds = new Set(normalized.words.filter((word) => word.source !== "system").map((word) => word.id));
-      const localWords = (await db.words.toArray()).filter((word) => word.userId === userId && word.source !== "system");
-      const removedWordIds = localWords.filter((word) => !remoteCustomWordIds.has(word.id)).map((word) => word.id);
-      if (removedWordIds.length) await db.words.bulkDelete(removedWordIds);
+    await bulkPutRemoteNewer(db.decks, normalized.decks);
+    await bulkPutRemoteNewer(db.words, normalized.words);
+    await bulkPutRemoteNewer(db.learnRecords, normalized.learnRecords);
+    await bulkPutRemoteNewer(db.reviewRecords, normalized.reviewRecords);
+    await bulkPutRemoteNewer(db.sessions, normalized.sessions);
+    await bulkPutRemoteNewer(db.settings, normalizeSettings(userId, normalized.settings));
 
-      const remoteDeckIds = new Set(normalized.decks.map((deck) => deck.id));
-      const localCustomDecks = (await db.decks.toArray()).filter((deck) => deck.sourceType !== "system" && deck.userId === userId);
-      const removedDeckIds = localCustomDecks.filter((deck) => !remoteDeckIds.has(deck.id)).map((deck) => deck.id);
-      if (removedDeckIds.length) await db.decks.bulkDelete(removedDeckIds);
+    for (const deletion of normalized.deletions) {
+      const targetTimestamp = await getLocalDeletionTargetTimestamp(userId, deletion);
+      if (targetTimestamp > deletion.deletedAt) continue;
+
+      if (deletion.collection === "words") await db.words.delete(deletion.itemId);
+      if (deletion.collection === "decks") await db.decks.delete(deletion.itemId);
+      if (deletion.collection === "learnRecords") await db.learnRecords.delete(deletion.itemId);
+      if (deletion.collection === "reviewRecords") await db.reviewRecords.delete(deletion.itemId);
+      if (deletion.collection === "sessions") await db.sessions.delete(deletion.itemId);
+      if (deletion.collection === "settings") await db.settings.delete(userId);
     }
-
-    if (normalized.decks.length) await db.decks.bulkPut(normalized.decks);
-    if (normalized.words.length) await db.words.bulkPut(normalized.words);
-    if (normalized.learnRecords.length) await db.learnRecords.bulkPut(normalized.learnRecords);
-    if (normalized.reviewRecords.length) await db.reviewRecords.bulkPut(normalized.reviewRecords);
-    if (normalized.sessions.length) await db.sessions.bulkPut(normalized.sessions);
-    if (normalized.settings.length) await db.settings.bulkPut(normalizeSettings(userId, normalized.settings));
   });
+
+  if (normalized.deletions.length) {
+    writeDeletionLog(userId, [...readDeletionLog(userId), ...normalized.deletions]);
+  }
 
   for (const item of normalized.activeSessions) {
     const storageKey = item.id === "learn" ? ACTIVE_LEARN_SESSION_KEY : ACTIVE_REVIEW_SESSION_KEY;
@@ -192,40 +356,59 @@ async function applyRemoteData(userId: string, collections?: Partial<SyncCollect
       writeStorage(scopedKey, item.snapshot);
     }
   }
+
+  await reconcileActiveSessions(userId);
 }
 
 export async function syncCloudData(options: { pushFirst?: boolean } = {}) {
-  if (syncing) return;
+  if (syncing) {
+    pendingSync = true;
+    pendingPushFirst = pendingPushFirst || Boolean(options.pushFirst);
+    emitSyncState({ status: "queued", lastSyncedAt: syncState.lastSyncedAt });
+    return currentSyncPromise;
+  }
+
   const userId = currentUserId();
-  if (!userId) return;
+  const syncToken = currentSyncToken();
+  if (!userId || !syncToken) return;
 
   syncing = true;
-  emitSyncState({ status: "syncing", lastSyncedAt: syncState.lastSyncedAt });
-  try {
-    const hadSynced = Boolean(await db.meta.get(`cloud_synced_at:${userId}`));
-    if (options.pushFirst) {
-      const localCollections = await collectLocalData(userId);
-      await postJson("/sync/push", { userId, collections: localCollections, replace: true });
-    }
+  currentSyncPromise = (async () => {
+    emitSyncState({ status: "syncing", lastSyncedAt: syncState.lastSyncedAt });
+    try {
+      if (options.pushFirst) {
+        const localCollections = await collectLocalData(userId);
+        await postJson("/sync/push", { userId, syncToken, collections: localCollections });
+      }
 
-    const pull = await postJson<{ collections?: Partial<SyncCollections> }>("/sync/pull", { userId });
-    await applyRemoteData(userId, pull.collections, { pruneMissing: hadSynced || options.pushFirst });
-    const collections = await collectLocalData(userId);
-    await postJson("/sync/push", { userId, collections, replace: true });
-    const syncedAt = Date.now();
-    await db.meta.put({ key: `cloud_synced_at:${userId}`, value: syncedAt });
-    emitSyncState({ status: "success", lastSyncedAt: syncedAt });
-    window.dispatchEvent(new CustomEvent("lumalex:cloud-sync"));
-  } catch (error) {
-    emitSyncState({
-      status: "error",
-      lastSyncedAt: syncState.lastSyncedAt,
-      error: error instanceof Error ? error.message : "同步失败，请稍后重试。",
-    });
-    throw error;
-  } finally {
-    syncing = false;
-  }
+      const pull = await postJson<{ collections?: Partial<SyncCollections> }>("/sync/pull", { userId, syncToken });
+      await applyRemoteData(userId, pull.collections);
+      const collections = await collectLocalData(userId);
+      await postJson("/sync/push", { userId, syncToken, collections });
+      const syncedAt = Date.now();
+      await db.meta.put({ key: `cloud_synced_at:${userId}`, value: syncedAt });
+      emitSyncState({ status: "success", lastSyncedAt: syncedAt });
+      window.dispatchEvent(new CustomEvent("lumalex:cloud-sync"));
+    } catch (error) {
+      emitSyncState({
+        status: "error",
+        lastSyncedAt: syncState.lastSyncedAt,
+        error: error instanceof Error ? error.message : "Cloud sync failed",
+      });
+      throw error;
+    } finally {
+      syncing = false;
+      currentSyncPromise = undefined;
+      if (pendingSync) {
+        const shouldPushFirst = pendingPushFirst;
+        pendingSync = false;
+        pendingPushFirst = false;
+        void syncCloudData({ pushFirst: shouldPushFirst }).catch(() => undefined);
+      }
+    }
+  })();
+
+  return currentSyncPromise;
 }
 
 export async function getLastCloudSyncedAt() {
@@ -235,11 +418,12 @@ export async function getLastCloudSyncedAt() {
   return typeof item?.value === "number" ? item.value : undefined;
 }
 
-export function scheduleCloudDataSync(delayMs = 1200) {
+export function scheduleCloudDataSync(delayMs = 600) {
   if (!currentUserId()) return;
   if (syncTimer) window.clearTimeout(syncTimer);
   emitSyncState({ status: "queued", lastSyncedAt: syncState.lastSyncedAt });
   syncTimer = window.setTimeout(() => {
+    syncTimer = undefined;
     void syncCloudData({ pushFirst: true }).catch(() => undefined);
   }, delayMs);
 }
@@ -249,7 +433,7 @@ export function flushCloudDataSync() {
     window.clearTimeout(syncTimer);
     syncTimer = undefined;
   }
-  void syncCloudData({ pushFirst: true }).catch(() => undefined);
+  return syncCloudData({ pushFirst: true }).catch(() => undefined);
 }
 
 export function getCloudSyncState() {

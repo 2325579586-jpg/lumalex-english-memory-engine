@@ -13,6 +13,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
+import { WordRelationsPanel } from "@/components/shared/word-relations-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -875,6 +876,18 @@ export function LibraryPage() {
                     <strong className="mt-1 block">{selectedWord.reviewCount}</strong>
                   </div>
                 </div>
+              </div>
+              <div>
+                <p className="mb-3 text-xs uppercase tracking-[0.18em] text-muted">词汇网络</p>
+                <WordRelationsPanel
+                  deckId={selectedWord.deckId}
+                  currentTerm={selectedWord.term}
+                  collocations={selectedWord.collocations}
+                  derivedForms={selectedWord.derivedForms || []}
+                  roots={selectedWord.roots}
+                  synonyms={selectedWord.synonyms}
+                  antonyms={selectedWord.antonyms}
+                />
               </div>
             </div>
 

@@ -75,6 +75,7 @@ function mapItemToWord(userId: string, deckId: string, dto: BackendLexiconItemDt
     exampleTranslation: dto.example?.zh || existing?.exampleTranslation || "",
     memoryHint: dto.mnemonic?.zh || existing?.memoryHint || "",
     roots: existing?.roots || [],
+    derivedForms: existing?.derivedForms || [],
     synonyms: existing?.synonyms || [],
     antonyms: existing?.antonyms || [],
     collocations: existing?.collocations || [],

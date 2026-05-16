@@ -1,0 +1,136 @@
+{
+  "generatedAt": "2026-05-16T08:24:31.610Z",
+  "source": "DICT.zip",
+  "encoding": "gb18030",
+  "files": 147,
+  "entries": 30276,
+  "shards": {
+    "a": 1678,
+    "b": 1683,
+    "c": 2884,
+    "d": 1849,
+    "e": 1187,
+    "f": 1320,
+    "g": 983,
+    "h": 1158,
+    "i": 1389,
+    "j": 265,
+    "k": 226,
+    "l": 996,
+    "m": 1604,
+    "n": 595,
+    "o": 775,
+    "p": 2602,
+    "q": 153,
+    "r": 1550,
+    "s": 3557,
+    "t": 1652,
+    "u": 667,
+    "v": 483,
+    "w": 862,
+    "x": 10,
+    "y": 102,
+    "z": 46
+  },
+  "duplicateHeadwords": 4488,
+  "samples": {
+    "land": {
+      "word": "land",
+      "phonetic": "/lAnd; lAnd/",
+      "partOfSpeech": "n.",
+      "meaning": "陆地；大地；地域；同一类型的地带",
+      "commonMeanings": [
+        "陆地",
+        "大地",
+        "地域",
+        "同一类型的地带"
+      ],
+      "examMeanings": [
+        "n. 陆地",
+        "n. 大地",
+        "n. 地域"
+      ]
+    },
+    "container": {
+      "word": "container",
+      "phonetic": "/kEn5teInE(r); kEn`tenL/",
+      "partOfSpeech": "n.",
+      "meaning": "容器如箱、瓶等；货柜；集装箱",
+      "commonMeanings": [
+        "容器如箱、瓶等",
+        "货柜",
+        "集装箱"
+      ],
+      "examMeanings": [
+        "n. 容器如箱、瓶等",
+        "n. 货柜",
+        "n. 集装箱"
+      ]
+    },
+    "reduce": {
+      "word": "reduce",
+      "phonetic": "/rI5dju:s; ?@ -5du:s; rI`dus/",
+      "partOfSpeech": "v.",
+      "meaning": "缩减体积、数量、程度、价格等；减小；减少；减低",
+      "commonMeanings": [
+        "缩减体积、数量、程度、价格等",
+        "减小",
+        "减少",
+        "减低"
+      ],
+      "examMeanings": [
+        "v. 缩减体积、数量、程度、价格等",
+        "v. 减小",
+        "v. 减少"
+      ]
+    },
+    "moderately": {
+      "word": "moderately",
+      "phonetic": "",
+      "partOfSpeech": "adv.",
+      "meaning": "适度地；不过分地",
+      "commonMeanings": [
+        "适度地",
+        "不过分地"
+      ],
+      "examMeanings": [
+        "adv. 适度地",
+        "adv. 不过分地"
+      ]
+    },
+    "abandon": {
+      "word": "abandon",
+      "phonetic": "/E5bAndEn; E`bAndEn/",
+      "partOfSpeech": "v.",
+      "meaning": "离开某人,某物或某地而不返回；遗弃；抛弃；离弃",
+      "commonMeanings": [
+        "离开某人,某物或某地而不返回",
+        "遗弃",
+        "抛弃",
+        "离弃"
+      ],
+      "examMeanings": [
+        "v. 离开某人,某物或某地而不返回",
+        "v. 遗弃",
+        "v. 抛弃"
+      ]
+    },
+    "concentrate": {
+      "word": "concentrate",
+      "phonetic": "/5kCnsntreIt; `kBnsn9tret/",
+      "partOfSpeech": "v.",
+      "meaning": "全神贯注,精神集中,专心致志於某事物；集合；集中；浓缩",
+      "commonMeanings": [
+        "全神贯注,精神集中,专心致志於某事物",
+        "集合",
+        "集中",
+        "浓缩"
+      ],
+      "examMeanings": [
+        "v. 全神贯注,精神集中,专心致志於某事物",
+        "v. 集合",
+        "v. 集中"
+      ]
+    }
+  }
+}
