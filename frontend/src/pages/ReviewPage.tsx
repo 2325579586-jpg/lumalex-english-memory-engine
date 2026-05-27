@@ -302,6 +302,7 @@ export function ReviewPage() {
   }
 
   const meaningsText = item.meanings.join("；") || "暂无释义";
+  const answerPartOfSpeech = item.partOfSpeech || item.type || "";
   const clozeText = buildClozeExample(item.example || "", item.term);
   const prompt =
     activeMode === "zh_to_en" || activeMode === "spelling"
@@ -543,7 +544,10 @@ export function ReviewPage() {
                   <p className="mt-3 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-2xl font-semibold tracking-normal" title={item.term}>
                     {item.term}
                   </p>
-                  <p className="mt-2 text-base leading-7">{meaningsText}</p>
+                  <p className="mt-2 text-base leading-7">
+                    {answerPartOfSpeech ? <span className="mr-2 font-semibold text-primary">{answerPartOfSpeech}</span> : null}
+                    {meaningsText}
+                  </p>
                   {activeMode === "cloze" && item.exampleTranslation ? (
                     <p className="mt-3 rounded-2xl bg-white/5 p-3 text-sm leading-6 text-muted-foreground">{item.exampleTranslation}</p>
                   ) : null}

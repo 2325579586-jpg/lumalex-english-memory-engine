@@ -257,6 +257,7 @@ export function LearnPage() {
   const meaningsText = item?.meanings?.length ? item.meanings.join("；") : "暂无释义";
   const primaryMeaning = item?.meanings?.length ? item.meanings.slice(0, pendingResult === "know" ? 2 : 4).join(" / ") : "暂无释义";
   const selectedFeedback = feedbackOptions.find((option) => option.value === pendingResult);
+  const answerPartOfSpeech = item?.partOfSpeech || item?.type || "";
 
   const commitAndNext = async () => {
     if (!pendingResult) return;
@@ -570,7 +571,10 @@ export function LearnPage() {
                       <Badge variant="muted">{nextScore}/3 分</Badge>
                     </div>
                   </div>
-                  <p className="mt-3 text-lg font-semibold leading-7">{meaningsText}</p>
+                  <p className="mt-3 text-lg font-semibold leading-7">
+                    {answerPartOfSpeech ? <span className="mr-2 text-primary">{answerPartOfSpeech}</span> : null}
+                    {meaningsText}
+                  </p>
                   <p className="mt-2 text-sm text-muted-foreground">{primaryMeaning}</p>
                 </div>
 
