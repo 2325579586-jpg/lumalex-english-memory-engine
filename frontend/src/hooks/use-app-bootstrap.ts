@@ -3,7 +3,7 @@ import { useAppStore } from "@/stores/app-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
-import { flushCloudDataSync, syncCloudData } from "@/services/cloud-sync-service";
+import { flushCloudDataSync, hasPendingCloudSync, syncCloudData } from "@/services/cloud-sync-service";
 import { readStorage, writeStorage } from "@/services/storage";
 
 const NOTIFICATION_SETTINGS_KEY = "notification-settings";
@@ -47,7 +47,10 @@ export function useAppBootstrap() {
     }
 
     const syncNow = () => {
-      void syncCloudData().catch(() => undefined);
+      void syncCloudData({ pushFirst: hasPendingCloudSync() }).catch(() => undefined);
+    };
+    const syncPendingFirst = () => {
+      void syncCloudData({ pushFirst: true }).catch(() => undefined);
     };
     const syncWhenVisible = () => {
       if (document.visibilityState === "visible") {
@@ -64,15 +67,15 @@ export function useAppBootstrap() {
     };
 
     window.addEventListener("focus", syncNow);
-    window.addEventListener("online", syncNow);
+    window.addEventListener("online", syncPendingFirst);
     document.addEventListener("visibilitychange", syncWhenVisible);
     document.addEventListener("visibilitychange", syncWhenHidden);
     window.addEventListener("pagehide", syncOnPageHide);
-    const interval = window.setInterval(syncNow, 60_000);
+    const interval = window.setInterval(syncNow, 20_000);
 
     return () => {
       window.removeEventListener("focus", syncNow);
-      window.removeEventListener("online", syncNow);
+      window.removeEventListener("online", syncPendingFirst);
       document.removeEventListener("visibilitychange", syncWhenVisible);
       document.removeEventListener("visibilitychange", syncWhenHidden);
       window.removeEventListener("pagehide", syncOnPageHide);

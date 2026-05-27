@@ -222,7 +222,10 @@ async function importCurrentExportFormat(userId: string, payload: Record<string,
   }
 
   if (words.length) {
-    const normalizedWords = words.filter(isObject).map((word) => ({ ...(word as unknown as WordItem), userId }));
+    const normalizedWords = words.filter(isObject).map((word) => {
+      const item = word as unknown as WordItem;
+      return { ...item, derivedForms: item.derivedForms || [], userId };
+    });
     await db.words.bulkPut(normalizedWords);
     summary.words = normalizedWords.length;
   }
@@ -307,6 +310,7 @@ async function importLegacyProgressFormat(userId: string, payload: Record<string
       exampleTranslation: normalizeText(example.zh),
       memoryHint: normalizeText(mnemonic.zh) || normalizeText(mnemonic.en),
       roots: [],
+      derivedForms: [],
       synonyms: [],
       antonyms: [],
       collocations: [],

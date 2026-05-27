@@ -21,7 +21,11 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
   hydrate: () => {
     const session = getCurrentSession();
     if (session) {
-      void syncLegacyLocalAccountToBackend(session.userId).catch(() => undefined);
+      void syncLegacyLocalAccountToBackend(session.userId)
+        .then((syncedSession) => {
+          if (syncedSession) set({ session: syncedSession, status: "authenticated" });
+        })
+        .catch(() => undefined);
     }
     set({
       session,

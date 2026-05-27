@@ -25,7 +25,7 @@ export const sessionRepository = {
     return sessions.find((session) => !session.endedAt && (!type || session.type === type));
   },
   async put(session: SessionRecord) {
-    await db.sessions.put(session);
+    await db.sessions.put({ ...session, updatedAt: session.updatedAt || Date.now() });
     scheduleCloudDataSync();
   },
 };

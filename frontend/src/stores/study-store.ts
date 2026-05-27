@@ -10,7 +10,19 @@ import {
   toggleWordStar,
   type ActiveLearnSession,
 } from "@/services/study-service";
+import { withUserScopedKey } from "@/services/auth-session";
+import { readStorage, writeStorage } from "@/services/storage";
 import type { Deck, LearnResult, WordItem } from "@/types/domain";
+
+const SELECTED_LEXICON_KEY = "selected-learn-deck";
+const TARGET_STEP = 10;
+const MIN_DAILY_TARGET = 10;
+const MAX_DAILY_TARGET = 100;
+
+function normalizeDailyTarget(value: number) {
+  const stepped = Math.round(value / TARGET_STEP) * TARGET_STEP;
+  return Math.min(MAX_DAILY_TARGET, Math.max(MIN_DAILY_TARGET, stepped || 20));
+}
 
 type LearnSummary = {
   total: number;
@@ -44,7 +56,7 @@ type StudyState = {
 
 export const useStudyStore = create<StudyState>((set, get) => ({
   decks: [],
-  selectedLexiconId: "all",
+  selectedLexiconId: readStorage<string>(withUserScopedKey(SELECTED_LEXICON_KEY), "all"),
   dailyTarget: 20,
   loading: false,
   error: undefined,
@@ -54,7 +66,8 @@ export const useStudyStore = create<StudyState>((set, get) => ({
   completedSummary: null,
   hydrate: async () => {
     const [decks, existing] = await Promise.all([deckRepository.list(), getLearnSessionState()]);
-    const currentSelection = get().selectedLexiconId;
+    const storedSelection = readStorage<string>(withUserScopedKey(SELECTED_LEXICON_KEY), "all");
+    const currentSelection = get().selectedLexiconId || storedSelection;
     set({
       decks,
       selectedLexiconId: currentSelection || "all",
@@ -63,8 +76,11 @@ export const useStudyStore = create<StudyState>((set, get) => ({
       currentIndex: existing?.snapshot?.currentIndex ?? 0,
     });
   },
-  setSelectedLexiconId: (id) => set({ selectedLexiconId: id }),
-  setDailyTarget: (value) => set({ dailyTarget: value }),
+  setSelectedLexiconId: (id) => {
+    writeStorage(withUserScopedKey(SELECTED_LEXICON_KEY), id);
+    set({ selectedLexiconId: id });
+  },
+  setDailyTarget: (value) => set({ dailyTarget: normalizeDailyTarget(value) }),
   startSession: async () => {
     set({ loading: true, error: undefined, completedSummary: null });
     try {

@@ -1,11 +1,10 @@
 import {
-  Activity,
+  ArrowRight,
   BookOpenCheck,
-  CalendarClock,
-  CircleDashed,
+  Cloud,
   Flame,
   FolderKanban,
-  Sparkles,
+  RefreshCcw,
   Target,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -14,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { useCloudSyncStatus } from "@/hooks/use-cloud-sync-status";
 import { startOfDay } from "@/lib/utils";
 import { buildDashboardSnapshot } from "@/modules/dashboard/selectors";
 import { deckRepository } from "@/repositories/deck-repository";
@@ -21,6 +21,7 @@ import { learnRecordRepository } from "@/repositories/learn-record-repository";
 import { reviewRecordRepository } from "@/repositories/review-record-repository";
 import { sessionRepository } from "@/repositories/session-repository";
 import { wordRepository } from "@/repositories/word-repository";
+import { useStudyStore } from "@/stores/study-store";
 import type { DashboardSnapshot, Deck, LearnRecord, ReviewRecord, SessionRecord, WordItem } from "@/types/domain";
 
 type AssistantTab = "memory" | "curve" | "mistakes" | "trend";
@@ -76,8 +77,27 @@ function getNormalizedMiniBarHeight(value: number, maxValue: number, maxHeight =
   return Math.min(maxHeight, Math.max(minHeight, scaled));
 }
 
+function getSyncLabel(status: ReturnType<typeof useCloudSyncStatus>["status"]) {
+  if (status === "syncing") return "同步中";
+  if (status === "queued") return "待同步";
+  if (status === "success") return "已同步";
+  if (status === "error") return "稍后重试";
+  return "云同步";
+}
+
+function isDueToday(word: WordItem, now: number) {
+  return Boolean(
+    word.nextReviewAt &&
+      word.nextReviewAt <= now &&
+      ["due_review", "weak", "learned_pending_review"].includes(word.status),
+  );
+}
+
 export function DashboardPage() {
   const navigate = useNavigate();
+  const syncState = useCloudSyncStatus();
+  const selectedLexiconId = useStudyStore((state) => state.selectedLexiconId);
+  const setSelectedLexiconId = useStudyStore((state) => state.setSelectedLexiconId);
   const [assistantTab, setAssistantTab] = useState<AssistantTab>("memory");
   const [decks, setDecks] = useState<Deck[]>([]);
   const [words, setWords] = useState<WordItem[]>([]);
@@ -117,8 +137,19 @@ export function DashboardPage() {
     [words, learnRecords, reviewRecords, sessions],
   );
 
-  const pendingLearn = snapshot.todayLearnAvailable;
-  const pendingReview = snapshot.todayReviewDue;
+  const activeDeck = useMemo(() => decks.find((deck) => deck.id === selectedLexiconId), [decks, selectedLexiconId]);
+  const effectiveLexiconId = selectedLexiconId === "all" || activeDeck ? selectedLexiconId : "all";
+  const activeDeckName = activeDeck?.name || "系统推荐混合词池";
+  const activeDeckWords = useMemo(
+    () => (effectiveLexiconId !== "all" ? words.filter((word) => word.deckId === effectiveLexiconId) : words),
+    [effectiveLexiconId, words],
+  );
+  const now = Date.now();
+  const todayStart = startOfDay(now);
+  const pendingLearn = activeDeckWords.filter((word) => word.status === "unseen" || word.status === "learning").length;
+  const pendingReview = activeDeckWords.filter((word) => isDueToday(word, now)).length;
+  const overdueInDeck = activeDeckWords.filter((word) => word.nextReviewAt && word.nextReviewAt < todayStart).length;
+  const learnedInDeck = activeDeckWords.filter((word) => !["unseen", "learning", "suspended"].includes(word.status)).length;
   const forgettingWindows = useMemo(() => buildForgettingWindows(words), [words]);
   const weakWords = useMemo(
     () => words.filter((word) => word.status === "weak" || word.wrongCount >= 2).sort((a, b) => b.wrongCount - a.wrongCount).slice(0, 4),
@@ -142,15 +173,9 @@ export function DashboardPage() {
     }),
     [trendBars],
   );
-  const focusMinutes = Math.round(
-    sessions.filter((session) => session.endedAt).reduce((sum, session) => sum + (session.durationSec || 0), 0) / 60,
-  );
-  const totalWordCount = useMemo(() => decks.reduce((sum, deck) => sum + deck.totalCount, 0), [decks]);
-  const todayStart = startOfDay(Date.now());
-  const todayLearnCount = useMemo(() => learnRecords.filter((record) => record.createdAt >= todayStart).length, [learnRecords, todayStart]);
-  const todayReviewCount = useMemo(() => reviewRecords.filter((record) => record.createdAt >= todayStart).length, [reviewRecords, todayStart]);
-  const learnCompletionRate = pendingLearn + todayLearnCount === 0 ? 100 : Math.min(100, Math.round((todayLearnCount / (todayLearnCount + pendingLearn)) * 100));
-  const reviewCompletionRate = pendingReview + todayReviewCount === 0 ? 100 : Math.min(100, Math.round((todayReviewCount / (todayReviewCount + pendingReview)) * 100));
+  const shouldReviewFirst = pendingReview > 0 && (pendingReview >= pendingLearn || overdueInDeck > 0);
+  const primaryHint = shouldReviewFirst ? "先清复习窗口，再学新词" : pendingLearn > 0 ? "先推进一组新词" : "今天可以轻量巩固";
+  const syncLabel = getSyncLabel(syncState.status);
 
   const renderAssistantContent = () => {
     if (assistantTab === "memory") {
@@ -270,179 +295,116 @@ export function DashboardPage() {
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
       <Card className="overflow-hidden border-border/80 bg-card/95 shadow-none">
-        <CardContent className="grid gap-6 p-6 sm:p-8 lg:gap-10 lg:p-9 xl:grid-cols-[1.35fr_0.7fr]">
-          <div className="space-y-5 sm:space-y-6">
-            <Badge variant="secondary">今日学习总览</Badge>
-            <div className="space-y-4">
-              <h1 className="max-w-[680px] text-3xl font-semibold leading-tight tracking-tight text-balance sm:text-4xl lg:text-5xl lg:leading-[1.08]">
-                今天还剩 {Math.max(snapshot.totalTasks - snapshot.completedTasks, 0)} 项任务，
-                {snapshot.recommendedAction === "review" ? "建议优先处理复习窗口" : "可以先推进一组新词"}。
-              </h1>
-              <p className="max-w-[620px] text-sm leading-7 text-muted-foreground sm:text-base">{snapshot.strategyCopy}</p>
+        <CardContent className="space-y-6 p-5 sm:p-7 lg:p-8">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <Badge variant="secondary" className="shrink-0">当前词库</Badge>
+              <select
+                value={effectiveLexiconId}
+                onChange={(event) => setSelectedLexiconId(event.target.value)}
+                className="h-9 max-w-full rounded-full border border-border bg-input px-3 text-sm font-semibold text-foreground outline-none transition focus:border-primary/50 sm:max-w-[260px]"
+                aria-label="选择首页统计词库"
+              >
+                <option value="all">系统推荐混合词池</option>
+                {decks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name}
+                  </option>
+                ))}
+              </select>
             </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-              <Button size="lg" className="w-full sm:w-auto" onClick={() => navigate("/learn")}>
-                开始学习
-              </Button>
-              <Button size="lg" variant="secondary" className="w-full sm:w-auto" onClick={() => navigate("/review")}>
-                进入复习
-              </Button>
-              <Button size="lg" variant="ghost" className="w-full sm:w-auto" onClick={() => navigate("/learn")}>
-                继续上次进度
-              </Button>
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-border/70 bg-panel/70 px-3 py-2 text-xs text-muted-foreground">
+              <Cloud className="h-3.5 w-3.5 text-primary" />
+              <span>{syncLabel}</span>
+              {syncState.pendingCount ? <span>· {syncState.pendingCount} 条待上传</span> : null}
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-            <div className="rounded-2xl bg-white/[0.045] p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-muted-foreground">今日完成率</p>
-                <Target className="h-5 w-5 text-primary" />
-              </div>
-              <strong className="mt-6 block text-4xl font-semibold sm:mt-8 sm:text-5xl">{snapshot.completionRate}%</strong>
-              <p className="mt-2 text-sm text-muted-foreground">
-                已完成 {snapshot.completedTasks} / {snapshot.totalTasks} 项核心任务
+          <div className="grid gap-5 xl:grid-cols-[0.78fr_1.22fr] xl:items-end">
+            <div className="space-y-3">
+              <p className="text-sm font-medium text-primary">{primaryHint}</p>
+              <h1 className="text-3xl font-semibold leading-tight tracking-tight text-balance sm:text-4xl lg:text-5xl">
+                今天的学习任务
+              </h1>
+              <p className="max-w-[520px] text-sm leading-6 text-muted-foreground">
+                {activeDeckName}：还有 {pendingLearn} 个待学新词，{pendingReview} 个今日待复习。
               </p>
-              <Progress value={snapshot.completionRate} className="mt-5 sm:mt-6" />
             </div>
 
-            <div className="rounded-2xl bg-white/[0.045] p-5">
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium text-muted-foreground">连续学习天数</p>
-                <Flame className="h-5 w-5 text-warning" />
-              </div>
-              <strong className="mt-6 block text-4xl font-semibold sm:mt-8 sm:text-5xl">{snapshot.streakDays}</strong>
-              <p className="mt-2 text-sm text-muted-foreground">你已经把“打开就学一点”变成了稳定节奏。</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                className="group rounded-[28px] border border-primary/20 bg-primary p-5 text-left text-primary-foreground shadow-card transition hover:-translate-y-0.5 hover:shadow-lg sm:p-6"
+                onClick={() => navigate("/learn")}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold uppercase tracking-[0.16em] opacity-85">Learn</span>
+                  <BookOpenCheck className="h-6 w-6 opacity-90 transition group-hover:scale-105" />
+                </div>
+                <strong className="mt-5 block text-6xl font-black leading-none tracking-tight sm:text-7xl">{pendingLearn}</strong>
+                <p className="mt-3 text-base font-semibold">{pendingLearn ? "待学新词" : "新词已清空"}</p>
+                <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white/14 px-3 py-2 text-sm font-semibold">
+                  开始学习
+                  <ArrowRight className="h-4 w-4" />
+                </div>
+              </button>
+
+              <button
+                type="button"
+                className="group rounded-[28px] border border-border/80 bg-panel/85 p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-lg sm:p-6"
+                onClick={() => (pendingReview ? navigate("/review") : navigate("/stats"))}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold uppercase tracking-[0.16em] text-muted-foreground">Review</span>
+                  <RefreshCcw className="h-6 w-6 text-primary transition group-hover:rotate-45" />
+                </div>
+                <strong className="mt-5 block text-6xl font-black leading-none tracking-tight text-foreground sm:text-7xl">{pendingReview}</strong>
+                <p className="mt-3 text-base font-semibold text-foreground">{pendingReview ? "今日需要巩固" : "今日已清空"}</p>
+                <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-2 text-sm font-semibold text-foreground">
+                  {pendingReview ? "开始复习" : "查看复习计划"}
+                  <ArrowRight className="h-4 w-4" />
+                </div>
+              </button>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 lg:gap-6 xl:grid-cols-[1fr_1fr_1.08fr]">
-        <Card className="border-white/5 bg-card/90 shadow-none">
-          <CardContent className="space-y-5 p-5 sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">开始今天的新词学习</p>
-                <p className="mt-1 text-sm text-muted-foreground">只显示真正需要推进的新词数量，不重复堆叠其他统计。</p>
+      <section className="grid gap-4 lg:grid-cols-4">
+        <Card className="border-border/70 bg-card/90 shadow-none lg:col-span-2">
+          <CardContent className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Target className="h-4 w-4 text-primary" />
+                今日完成率
               </div>
-              <div className="rounded-xl bg-primary/10 p-2 text-primary">
-                <BookOpenCheck className="h-5 w-5" />
-              </div>
+              <strong className="mt-3 block text-4xl font-semibold">{snapshot.completionRate}%</strong>
+              <Progress value={snapshot.completionRate} className="mt-4" />
             </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="rounded-xl bg-white/[0.04] p-4">
-                <p className="text-sm text-muted-foreground">待学新词</p>
-                <strong className="mt-2 block text-2xl font-semibold sm:text-3xl">{pendingLearn}</strong>
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <Flame className="h-4 w-4 text-warning" />
+                连续学习
               </div>
-              <div className="rounded-xl bg-white/[0.04] p-4">
-                <p className="text-sm text-muted-foreground">预计时长</p>
-                <strong className="mt-2 block text-2xl font-semibold sm:text-3xl">
-                  {Math.max(8, Math.round(pendingLearn * 1.5))} 分钟
-                </strong>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <CircleDashed className="h-4 w-4 shrink-0 text-primary" />
-              推荐先学一组 10 个，保持节奏稳定比一次学太多更有效。
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button className="flex-1" onClick={() => navigate("/learn")}>
-                开始新学
-              </Button>
-              <Button className="flex-1" variant="secondary" onClick={() => navigate("/library")}>
-                查看词单
-              </Button>
+              <strong className="mt-3 block text-4xl font-semibold">{snapshot.streakDays} 天</strong>
+              <p className="mt-2 text-sm text-muted-foreground">保持打开就学一点的节奏。</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-white/5 bg-card/90 shadow-none">
-          <CardContent className="space-y-5 p-5 sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">巩固已复习过的词</p>
-                <p className="mt-1 text-sm text-muted-foreground">先清掉到期窗口，再继续扩大输入量。</p>
-              </div>
-              <div className="rounded-xl bg-accent/10 p-2 text-accent-foreground">
-                <CalendarClock className="h-5 w-5 text-accent" />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="rounded-xl bg-white/[0.04] p-4">
-                <p className="text-sm text-muted-foreground">待复习</p>
-                <strong className="mt-2 block text-2xl font-semibold sm:text-3xl">{pendingReview}</strong>
-              </div>
-              <div className="rounded-xl bg-white/[0.04] p-4">
-                <p className="text-sm text-muted-foreground">逾期词</p>
-                <strong className="mt-2 block text-2xl font-semibold sm:text-3xl">{snapshot.overdueCount}</strong>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Sparkles className="h-4 w-4 shrink-0 text-accent" />
-              本轮重点：昨日遗忘词、近期模糊词、逾期复习词。
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <Button className="flex-1" variant="secondary" onClick={() => navigate("/review")}>
-                开始复习
-              </Button>
-              <Button className="flex-1" variant="ghost" onClick={() => navigate("/stats")}>
-                查看计划
-              </Button>
-            </div>
+        <Card className="border-border/70 bg-card/90 shadow-none">
+          <CardContent className="p-5 sm:p-6">
+            <p className="text-sm text-muted-foreground">已学词</p>
+            <strong className="mt-3 block text-4xl font-semibold">{learnedInDeck}</strong>
+            <p className="mt-2 text-sm text-muted-foreground">当前词库范围</p>
           </CardContent>
         </Card>
 
-        <Card className="border-white/5 bg-card/90 shadow-none">
-          <CardContent className="space-y-5 p-5 sm:p-6">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-foreground">今日任务节奏</p>
-                <p className="mt-1 text-sm text-muted-foreground">把今天的节奏看清楚，就更容易稳定完成。</p>
-              </div>
-              <div className="rounded-xl bg-white/[0.04] p-2 text-foreground">
-                <Activity className="h-5 w-5" />
-              </div>
-            </div>
-
-            <div className="space-y-4 rounded-xl bg-white/[0.04] p-4">
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">学习进度</span>
-                  <span>{learnCompletionRate}%</span>
-                </div>
-                <Progress value={learnCompletionRate} />
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">复习进度</span>
-                  <span>{reviewCompletionRate}%</span>
-                </div>
-                <Progress value={reviewCompletionRate} />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-xl bg-white/[0.04] p-4">
-                <p className="text-sm text-muted-foreground">专注时长</p>
-                <strong className="mt-2 block text-xl font-semibold">{focusMinutes} 分钟</strong>
-              </div>
-              <div className="rounded-xl bg-white/[0.04] p-4">
-                <p className="text-sm text-muted-foreground">预计剩余</p>
-                <strong className="mt-2 block text-xl font-semibold">{Math.max(5, Math.round((snapshot.totalTasks - snapshot.completedTasks) * 1.8))} 分钟</strong>
-              </div>
-            </div>
-
-            <Button variant="ghost" className="w-full sm:w-auto" onClick={() => navigate("/stats")}>
-              查看详细计划
-            </Button>
+        <Card className="border-border/70 bg-card/90 shadow-none">
+          <CardContent className="p-5 sm:p-6">
+            <p className="text-sm text-muted-foreground">逾期复习</p>
+            <strong className="mt-3 block text-4xl font-semibold">{overdueInDeck}</strong>
+            <p className="mt-2 text-sm text-muted-foreground">包含在今日复习内</p>
           </CardContent>
         </Card>
       </section>
@@ -490,8 +452,8 @@ export function DashboardPage() {
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="rounded-xl bg-white/[0.04] p-4">
-                <p className="text-sm text-muted-foreground">总词条数</p>
-                <strong className="mt-2 block text-2xl font-semibold">{totalWordCount}</strong>
+                <p className="text-sm text-muted-foreground">当前词库</p>
+                <strong className="mt-2 block text-2xl font-semibold">{activeDeckWords.length}</strong>
               </div>
               <div className="rounded-xl bg-white/[0.04] p-4">
                 <p className="text-sm text-muted-foreground">待学习</p>
@@ -504,7 +466,7 @@ export function DashboardPage() {
             </div>
 
             <div className="rounded-xl bg-white/[0.04] p-4 text-sm leading-6 text-muted-foreground">
-              当前共有 {decks.length} 个可用词库。系统会把新词、到期复习词和薄弱词统一纳入调度。
+              当前共有 {decks.length} 个可用词库。首页主数字会跟随当前词库切换，只显示真正需要学习和复习的词。
             </div>
 
             <Button className="w-full sm:w-auto" onClick={() => navigate("/library")}>

@@ -1,12 +1,21 @@
-const SYNC_COLLECTIONS = ["decks", "words", "learnRecords", "reviewRecords", "sessions", "settings", "activeSessions"];
+const SYNC_COLLECTIONS = ["decks", "words", "learnRecords", "reviewRecords", "sessions", "settings", "activeSessions", "deletions"];
 
 function getPayloadTimestamp(item) {
-  const candidates = [item.updatedAt, item.lastUpdatedAt, item.lastStudiedAt, item.lastReviewedAt, item.createdAt];
+  const candidates = [
+    item.updatedAt,
+    item.lastUpdatedAt,
+    item.lastStudiedAt,
+    item.lastReviewedAt,
+    item.endedAt,
+    item.createdAt,
+    item.startedAt,
+  ];
   const raw = candidates.find((value) => typeof value === "number" && Number.isFinite(value));
   return raw ? new Date(raw) : new Date();
 }
 
 function getSyncItemId(collection, item) {
+  if (collection === "deletions") return item.id || `${item.collection}:${item.itemId}`;
   if (collection === "settings") return item.userId || item.id || "settings";
   return item.id || item.wordId || item.deckId || item.term || `${collection}-${Math.random().toString(36).slice(2)}`;
 }

@@ -25,7 +25,7 @@ module.exports = async function handler(req, res) {
     const rows = await sql`
       INSERT INTO users (id, username, username_normalized, password_hash, created_at, updated_at)
       VALUES (${userId}, ${username}, ${username}, ${passwordHash}, NOW(), NOW())
-      RETURNING id, username
+      RETURNING id, username, password_hash
     `;
     return sendJson(res, 201, { session: buildSession(rows[0]) });
   } catch (error) {

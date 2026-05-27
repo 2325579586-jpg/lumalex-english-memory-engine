@@ -5,10 +5,10 @@ import { settingsRepository } from "@/repositories/settings-repository";
 import { wordRepository } from "@/repositories/word-repository";
 import { requireCurrentUserId } from "@/services/auth-session";
 import { syncCurrentLocalAccountToBackend } from "@/services/auth-service";
-import { scheduleCloudDataSync, syncCloudData } from "@/services/cloud-sync-service";
+import { hasPendingCloudSync, syncCloudData } from "@/services/cloud-sync-service";
 import { syncSystemLexicons } from "@/services/system-lexicon-sync";
 
-const SYSTEM_BOOTSTRAP_VERSION = 2;
+const SYSTEM_BOOTSTRAP_VERSION = 3;
 
 function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -67,9 +67,7 @@ export async function initLocalDb() {
   await ensureSystemDecks();
   await ensureUserSettings(userId);
   await syncSystemLexicons(false, { includeWords: false }).catch(() => undefined);
-  await Promise.race([syncCloudData().catch(() => undefined), wait(1800)]);
-
-  scheduleCloudDataSync(100);
+  await Promise.race([syncCloudData({ pushFirst: hasPendingCloudSync() }).catch(() => undefined), wait(1800)]);
   window.setTimeout(() => {
     void syncSystemLexicons(false, { includeWords: true })
       .then(() => repairMissingSystemLexicons())

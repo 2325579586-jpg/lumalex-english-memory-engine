@@ -89,6 +89,17 @@ export function SettingsPage() {
   );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const syncState = useCloudSyncStatus();
+  const visibleLastSyncedAt = syncState.lastSyncedAt || lastSyncedAt;
+  const syncStatusText =
+    syncState.status === "queued"
+      ? `等待同步${syncState.pendingCount ? `：${syncState.pendingCount} 条` : ""}`
+      : syncState.status === "syncing"
+        ? "同步中"
+        : syncState.status === "success"
+          ? `已同步 ${formatSyncTime(visibleLastSyncedAt)}`
+          : syncState.status === "error"
+            ? syncState.error || "同步失败，稍后自动重试"
+            : "尚未同步";
 
   useEffect(() => {
     getLastCloudSyncedAt().then(setLastSyncedAt).catch(() => undefined);
@@ -102,13 +113,14 @@ export function SettingsPage() {
     setMessage("");
     setSyncing(true);
     try {
-      await syncCloudData();
+      await syncCloudData({ pushFirst: true });
       await refreshSyncedAt();
       resetSettings(session?.userId);
       await hydrateSettings();
       setMessage("云端同步完成，手机端和电脑端会使用同一份账号数据、词库和学习记录。");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "同步失败，请稍后重试。");
+      const detail = error instanceof Error && "detail" in error ? (error.detail as { message?: string } | undefined) : undefined;
+      setMessage(detail?.message || (error instanceof Error ? error.message : "同步失败，请稍后自动重试。"));
     } finally {
       setSyncing(false);
     }
@@ -117,7 +129,7 @@ export function SettingsPage() {
   async function handleLogout() {
     setMessage("");
     try {
-      await syncCloudData().catch(() => undefined);
+      await syncCloudData({ pushFirst: true }).catch(() => undefined);
     } finally {
       logout();
     }
@@ -244,6 +256,22 @@ export function SettingsPage() {
                 <LogOut className="h-4 w-4" />
                 退出账号
               </Button>
+            </div>
+            <div
+              className={cn(
+                "mt-4 rounded-2xl border px-4 py-3 text-sm leading-6",
+                syncState.status === "error"
+                  ? "border-red-500/35 bg-red-50 text-red-950 dark:bg-red-500/15 dark:text-red-50"
+                  : syncState.status === "success"
+                    ? "border-emerald-500/35 bg-emerald-50 text-emerald-950 dark:bg-emerald-500/15 dark:text-emerald-50"
+                    : "border-border/70 bg-background/50 text-foreground",
+              )}
+            >
+              <p className="font-medium">{syncStatusText}</p>
+              <p className="mt-1 text-xs opacity-80">最近同步：{formatSyncTime(visibleLastSyncedAt)}</p>
+              {syncState.pendingCount ? <p className="text-xs opacity-80">本地等待上传：{syncState.pendingCount} 条</p> : null}
+              {syncState.nextRetryAt ? <p className="text-xs opacity-80">下次自动重试：{formatSyncTime(syncState.nextRetryAt)}</p> : null}
+              {syncState.errorDetail?.status ? <p className="text-xs opacity-80">接口状态：HTTP {syncState.errorDetail.status}</p> : null}
             </div>
           </div>
         </section>
@@ -520,7 +548,14 @@ export function SettingsPage() {
     session,
     settings,
     syncing,
+    syncState.errorDetail?.status,
+    syncState.lastSyncedAt,
+    syncState.nextRetryAt,
+    syncState.pendingCount,
+    syncState.status,
+    syncStatusText,
     updateSettings,
+    visibleLastSyncedAt,
   ]);
 
   return (
@@ -572,21 +607,20 @@ export function SettingsPage() {
                       : "muted"
               }
             >
-              {syncState.status === "queued"
-                ? "待同步"
-                : syncState.status === "syncing"
-                  ? "同步中"
-                  : syncState.status === "success"
-                    ? `已同步 ${formatSyncTime(lastSyncedAt)}`
-                    : syncState.status === "error"
-                      ? "同步失败"
-                      : "未同步"}
+              {syncState.status === "error" ? "同步失败" : syncStatusText}
             </Badge>
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
           {message && (
-            <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+            <div
+              className={cn(
+                "rounded-2xl border px-4 py-3 text-sm shadow-sm",
+                /fail|error|失败|错误/i.test(message)
+                  ? "border-red-500/40 bg-red-50 text-red-950 dark:bg-red-500/15 dark:text-red-50"
+                  : "border-emerald-500/40 bg-emerald-50 text-emerald-950 dark:bg-emerald-500/15 dark:text-emerald-50",
+              )}
+            >
               {message}
             </div>
           )}

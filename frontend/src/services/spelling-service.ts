@@ -16,6 +16,10 @@ export type ActiveSpellingSession = {
   updatedAt: number;
 };
 
+type SubmitSpellingOptions = {
+  advanceWithoutMastery?: boolean;
+};
+
 function getStoredSession(source: SpellingSource) {
   return readStorage<ActiveSpellingSession | null>(withUserScopedKey(`${SPELLING_SESSION_KEY}:${source}`), null);
 }
@@ -35,6 +39,19 @@ async function loadWords(wordIds: string[]) {
 
 function normalizeText(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function moveCurrentWordToReviewAgain(snapshot: ActiveSpellingSession): ActiveSpellingSession {
+  const now = Date.now();
+  const currentWordId = snapshot.wordIds[snapshot.currentIndex];
+  const rest = snapshot.wordIds.filter((_, index) => index !== snapshot.currentIndex);
+  const nextWordIds = [...rest, currentWordId].filter(Boolean);
+  return {
+    ...snapshot,
+    wordIds: nextWordIds,
+    currentIndex: snapshot.currentIndex >= rest.length ? 0 : snapshot.currentIndex,
+    updatedAt: now,
+  };
 }
 
 export async function getSpellingSessionState(source: SpellingSource) {
@@ -82,7 +99,7 @@ export async function startSpellingSession(source: SpellingSource, wordIds: stri
   return { snapshot, words };
 }
 
-export async function submitSpellingAnswer(source: SpellingSource, answer: string) {
+export async function submitSpellingAnswer(source: SpellingSource, answer: string, options: SubmitSpellingOptions = {}) {
   const state = await getSpellingSessionState(source);
   if (!state) {
     throw new Error("没有可继续的拼写会话。");
@@ -94,6 +111,36 @@ export async function submitSpellingAnswer(source: SpellingSource, answer: strin
   }
 
   const isCorrect = normalizeText(answer) === normalizeText(currentWord.term);
+  if (options.advanceWithoutMastery) {
+    if (!isCorrect) {
+      const sameSnapshot: ActiveSpellingSession = {
+        ...snapshot,
+        updatedAt: Date.now(),
+      };
+      saveStoredSession(sameSnapshot);
+      return {
+        completed: false as const,
+        correct: false as const,
+        noScore: true as const,
+        word: currentWord,
+        snapshot: sameSnapshot,
+        words,
+      };
+    }
+
+    const nextSnapshot = moveCurrentWordToReviewAgain(snapshot);
+    saveStoredSession(nextSnapshot);
+    const nextWords = await loadWords(nextSnapshot.wordIds);
+    return {
+      completed: false as const,
+      correct: isCorrect,
+      noScore: true as const,
+      word: currentWord,
+      snapshot: nextSnapshot,
+      words: nextWords,
+    };
+  }
+
   if (!isCorrect) {
     return {
       completed: false as const,

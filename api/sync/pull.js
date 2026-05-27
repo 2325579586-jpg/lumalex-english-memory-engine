@@ -1,4 +1,5 @@
 const { ensureSchema, getSql } = require("../_lib/db");
+const { verifySyncAuth } = require("../_lib/auth");
 const { emptyCollections, isCloudRelevantWord, SYNC_COLLECTIONS } = require("../_lib/sync");
 const { handleOptions, readJsonBody, sendJson } = require("../_lib/http");
 
@@ -8,20 +9,68 @@ module.exports = async function handler(req, res) {
 
   const payload = await readJsonBody(req);
   const userId = String(payload.userId || "").trim();
+  const syncToken = String(payload.syncToken || "").trim();
+  const since = Number(payload.since || 0);
+  const limit = Math.min(Math.max(Number(payload.limit || 800), 1), 1000);
+  const cursor = String(payload.cursor || "");
+  const [cursorTimeRaw, cursorIdRaw] = cursor.split(":");
+  const cursorTime = Number(cursorTimeRaw || 0);
+  const cursorId = Number(cursorIdRaw || 0);
   if (!userId) return sendJson(res, 400, { error: "userId is required" });
+  if (!syncToken) return sendJson(res, 401, { error: "Unauthorized" });
 
   try {
     await ensureSchema();
     const sql = getSql();
-    const rows = await sql`
-      SELECT collection, payload_json
-      FROM cloud_sync_records
-      WHERE user_id = ${userId}
-      ORDER BY updated_at ASC
-    `;
+    if (!(await verifySyncAuth(sql, userId, syncToken))) {
+      return sendJson(res, 401, { error: "Unauthorized" });
+    }
+
+    const sinceDate = Number.isFinite(since) && since > 0 ? new Date(since) : null;
+    const cursorDate = Number.isFinite(cursorTime) && cursorTime > 0 ? new Date(cursorTime) : null;
+    const pageLimit = limit + 1;
+    let rows;
+
+    if (sinceDate && cursorDate && Number.isFinite(cursorId) && cursorId > 0) {
+      rows = await sql`
+        SELECT id, collection, payload_json, updated_at
+        FROM cloud_sync_records
+        WHERE user_id = ${userId}
+          AND updated_at >= ${sinceDate.toISOString()}
+          AND (updated_at > ${cursorDate.toISOString()} OR (updated_at = ${cursorDate.toISOString()} AND id > ${cursorId}))
+        ORDER BY updated_at ASC, id ASC
+        LIMIT ${pageLimit}
+      `;
+    } else if (sinceDate) {
+      rows = await sql`
+        SELECT id, collection, payload_json, updated_at
+        FROM cloud_sync_records
+        WHERE user_id = ${userId} AND updated_at >= ${sinceDate.toISOString()}
+        ORDER BY updated_at ASC, id ASC
+        LIMIT ${pageLimit}
+      `;
+    } else if (cursorDate && Number.isFinite(cursorId) && cursorId > 0) {
+      rows = await sql`
+        SELECT id, collection, payload_json, updated_at
+        FROM cloud_sync_records
+        WHERE user_id = ${userId}
+          AND (updated_at > ${cursorDate.toISOString()} OR (updated_at = ${cursorDate.toISOString()} AND id > ${cursorId}))
+        ORDER BY updated_at ASC, id ASC
+        LIMIT ${pageLimit}
+      `;
+    } else {
+      rows = await sql`
+        SELECT id, collection, payload_json, updated_at
+        FROM cloud_sync_records
+        WHERE user_id = ${userId}
+        ORDER BY updated_at ASC, id ASC
+        LIMIT ${pageLimit}
+      `;
+    }
 
     const collections = emptyCollections();
-    for (const row of rows) {
+    const pageRows = rows.slice(0, limit);
+    for (const row of pageRows) {
       if (!SYNC_COLLECTIONS.includes(row.collection)) continue;
       try {
         const parsed = JSON.parse(row.payload_json);
@@ -34,8 +83,16 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    return sendJson(res, 200, { collections, syncedAt: Date.now() });
+    const last = pageRows[pageRows.length - 1];
+    const nextCursor = rows.length > limit && last ? `${new Date(last.updated_at).getTime()}:${last.id}` : undefined;
+    return sendJson(res, 200, { collections, cursor: nextCursor, hasMore: Boolean(nextCursor), syncedAt: Date.now() });
   } catch (error) {
-    return sendJson(res, 500, { error: error instanceof Error ? error.message : "Pull failed" });
+    const message = error instanceof Error ? error.message : "Pull failed";
+    console.error("[sync/pull] failed", {
+      userId,
+      message,
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return sendJson(res, 500, { error: message, code: "SYNC_PULL_FAILED" });
   }
 };

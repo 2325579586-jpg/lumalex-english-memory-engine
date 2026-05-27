@@ -44,10 +44,24 @@ function clearStoredSession() {
   removeStorage(withUserScopedKey(ACTIVE_REVIEW_SESSION_KEY));
 }
 
+function closeStoredSession(session: ActiveReviewSession, closedAt = Date.now()) {
+  saveStoredSession({
+    ...session,
+    wordIds: [],
+    currentIndex: 0,
+    questionStartedAt: closedAt,
+    updatedAt: closedAt,
+  });
+}
+
 function getReviewResultScore(result: ReviewResult) {
-  if (result === "remembered") return 3;
+  if (result === "remembered") return 1;
   if (result === "hesitant") return 1;
   return 0;
+}
+
+function isReviewDue(word: WordItem, now: number) {
+  return !!word.nextReviewAt && word.nextReviewAt <= now;
 }
 
 async function loadWords(wordIds: string[]) {
@@ -61,10 +75,10 @@ export async function getDueReviewQueue(limit?: number) {
   const now = Date.now();
   const words = await wordRepository.list();
 
-  const overdue = words.filter((word) => !!word.nextReviewAt && word.nextReviewAt < now && word.status === "due_review");
-  const due = words.filter((word) => !!word.nextReviewAt && word.nextReviewAt <= now && word.status === "learned_pending_review");
-  const weak = words.filter((word) => word.status === "weak");
-  const focused = words.filter((word) => word.isFocused);
+  const overdue = words.filter((word) => isReviewDue(word, now) && word.status === "due_review");
+  const due = words.filter((word) => isReviewDue(word, now) && word.status === "learned_pending_review");
+  const weak = words.filter((word) => isReviewDue(word, now) && word.status === "weak");
+  const focused = words.filter((word) => isReviewDue(word, now) && word.isFocused);
 
   const combined = [...overdue, ...due, ...weak, ...focused]
     .filter((word, index, arr) => arr.findIndex((item) => item.id === word.id) === index)
@@ -77,6 +91,12 @@ export async function getReviewSessionState() {
   const snapshot = getStoredSession();
   if (!snapshot) return null;
   const words = await loadWords(snapshot.wordIds);
+  if (!words.length) {
+    if (snapshot.wordIds.length) {
+      closeStoredSession(snapshot);
+    }
+    return null;
+  }
   return { snapshot, words };
 }
 
@@ -123,6 +143,7 @@ export async function startReviewSession(mode: ReviewMode = "en_to_zh") {
     wordIds: snapshot.wordIds,
     startedAt,
     progressIndex: 0,
+    updatedAt: startedAt,
   };
   await sessionRepository.put(sessionRecord);
   saveStoredSession(snapshot);
@@ -207,8 +228,9 @@ export async function submitReviewFeedback(result: ReviewResult) {
       durationSec: Math.round((now - snapshot.startedAt) / 1000),
       progressIndex: snapshot.wordIds.length,
       summary,
+      updatedAt: now,
     });
-    clearStoredSession();
+    closeStoredSession(snapshot, now);
     return { completed: true as const, updatedWord, summary };
   }
 
@@ -232,6 +254,7 @@ export async function submitReviewFeedback(result: ReviewResult) {
       wordIds: nextSnapshot.wordIds,
       startedAt: snapshot.startedAt,
       progressIndex: 0,
+      updatedAt: now,
     });
     saveStoredSession(nextSnapshot);
     return { completed: false as const, phaseTransition: true as const, updatedWord, snapshot: nextSnapshot };
@@ -255,6 +278,7 @@ export async function submitReviewFeedback(result: ReviewResult) {
     wordIds: nextSnapshot.wordIds,
     startedAt: snapshot.startedAt,
     progressIndex: nextSnapshot.currentIndex,
+    updatedAt: now,
   });
   saveStoredSession(nextSnapshot);
   return { completed: false as const, updatedWord, snapshot: nextSnapshot };
@@ -279,6 +303,7 @@ export async function postponeReviewWord() {
     wordIds: nextSnapshot.wordIds,
     startedAt: snapshot.startedAt,
     progressIndex: snapshot.currentIndex,
+    updatedAt: nextSnapshot.updatedAt,
   });
   saveStoredSession(nextSnapshot);
   return nextSnapshot;
@@ -299,6 +324,7 @@ export async function abandonReviewSession() {
     durationSec: Math.round((now - snapshot.startedAt) / 1000),
     progressIndex: snapshot.currentIndex,
     abandoned: true,
+    updatedAt: now,
   });
   const words = await loadWords(snapshot.wordIds);
   await wordRepository.bulkUpsert(
@@ -310,5 +336,5 @@ export async function abandonReviewSession() {
         updatedAt: now,
       })),
   );
-  clearStoredSession();
+  closeStoredSession(snapshot, now);
 }

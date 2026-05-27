@@ -15,7 +15,7 @@ export const settingsRepository = {
   },
   async put(settings: UserSettings) {
     const userId = requireCurrentUserId();
-    await db.settings.put({ id: userId, ...settings, userId });
+    await db.settings.put({ id: userId, ...settings, userId, updatedAt: Date.now() });
     scheduleCloudDataSync();
   },
 };

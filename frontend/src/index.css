@@ -88,3 +88,12 @@ body {
 .scrollbar-subtle::-webkit-scrollbar-track {
   background: transparent;
 }
+
+body.study-session-active .mobile-app-nav,
+body.study-session-active .mobile-sync-bar {
+  display: none;
+}
+
+body.study-session-active .app-main {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}

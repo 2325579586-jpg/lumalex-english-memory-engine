@@ -52,6 +52,11 @@ async function ensureSchema() {
     `;
 
     await sql`
+      CREATE INDEX IF NOT EXISTS idx_cloud_sync_user_updated
+      ON cloud_sync_records (user_id, updated_at, id)
+    `;
+
+    await sql`
       CREATE TABLE IF NOT EXISTS system_lexicons (
         id TEXT PRIMARY KEY,
         lexicon_key TEXT NOT NULL,

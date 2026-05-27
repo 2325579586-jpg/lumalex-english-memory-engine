@@ -47,11 +47,23 @@ const SYSTEM_LEXICONS = [
     },
     scope: "system",
   },
+  {
+    id: "system-daily-life",
+    key: "daily-life",
+    slug: "daily-life",
+    name: { en: "Daily Life Vocabulary", zh: "日常生活用词" },
+    description: {
+      en: "Everyday words and phrases for dates, months, fruits, vegetables, and daily conversation.",
+      zh: "覆盖日期、月份、水果、蔬菜和日常口语表达的生活英语词库。",
+    },
+    scope: "system",
+  },
 ];
 
 const SYSTEM_ITEMS_PATHS = {
   "system-cet4": path.join(process.cwd(), "backend", "system_lexicon_data", "cet4.json"),
   "system-cet6": path.join(process.cwd(), "backend", "system_lexicon_data", "cet6.json"),
+  "system-daily-life": path.join(process.cwd(), "backend", "system_lexicon_data", "daily-life.json"),
 };
 
 const itemCache = new Map();

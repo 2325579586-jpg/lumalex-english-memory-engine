@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { Deck } from "@/types/domain";
 import {
   ensureDeckOptions,
+  enrichExistingWordRelations,
   generateAiMockWordList,
   parseBatchText,
   parseCsvText,
@@ -39,6 +40,9 @@ type SmartFormState = {
   exampleTranslation: string;
   memoryHint: string;
   tags: string;
+  synonyms: string;
+  antonyms: string;
+  derivedForms: string;
   pronunciationUk: string;
   pronunciationUs: string;
 };
@@ -54,6 +58,9 @@ function mapDraftToForm(draft: EnrichedDraft, deckId: string): SmartFormState {
     exampleTranslation: draft.exampleTranslation,
     memoryHint: draft.memoryHint,
     tags: draft.tags.join("，"),
+    synonyms: draft.synonyms.join("，"),
+    antonyms: draft.antonyms.join("，"),
+    derivedForms: draft.derivedForms.map((item) => item.term).join("，"),
     pronunciationUk: draft.pronunciationUk,
     pronunciationUs: draft.pronunciationUs,
   };
@@ -70,6 +77,9 @@ function emptySmartForm(deckId = ""): SmartFormState {
     exampleTranslation: "",
     memoryHint: "",
     tags: "",
+    synonyms: "",
+    antonyms: "",
+    derivedForms: "",
     pronunciationUk: "",
     pronunciationUs: "",
   };
@@ -82,6 +92,8 @@ export function AddWordsPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [saving, setSaving] = useState(false);
   const [autoFilling, setAutoFilling] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number; term: string } | null>(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -136,6 +148,19 @@ export function AddWordsPage() {
             .split(/[；;,，]/)
             .map((item) => item.trim())
             .filter(Boolean),
+          synonyms: singleForm.synonyms
+            .split(/[；;,，、]/)
+            .map((item) => item.trim())
+            .filter(Boolean),
+          antonyms: singleForm.antonyms
+            .split(/[；;,，、]/)
+            .map((item) => item.trim())
+            .filter(Boolean),
+          derivedForms: singleForm.derivedForms
+            .split(/[；;,，、]/)
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .map((term) => ({ term, pos: "other" as const })),
           example: singleForm.example,
           exampleTranslation: singleForm.exampleTranslation,
           memoryHint: singleForm.memoryHint,
@@ -184,6 +209,22 @@ export function AddWordsPage() {
     }
   }
 
+  async function handleBackfillRelations() {
+    clearMessages();
+    setBackfilling(true);
+    setBackfillProgress({ done: 0, total: 0, term: "" });
+    try {
+      const result = await enrichExistingWordRelations((done, total, term) => {
+        setBackfillProgress({ done, total, term });
+      });
+      setMessage(result.total ? `已为现有词库补全 ${result.updated}/${result.total} 个词条的派生词和近义词。` : "现有词库都已经有派生词和近义信息。");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "补全现有词库失败，请稍后重试。");
+    } finally {
+      setBackfilling(false);
+    }
+  }
+
   async function handleSaveSingle() {
     clearMessages();
     if (!singleForm.term.trim()) {
@@ -201,7 +242,10 @@ export function AddWordsPage() {
         setSingleForm(payloadToSave);
       }
 
-      await saveSingleWord(payloadToSave);
+      await saveSingleWord({
+        ...payloadToSave,
+        derivedForms: singleGenerated?.term === payloadToSave.term ? singleGenerated.derivedForms : payloadToSave.derivedForms,
+      });
       await refreshDecks();
       const currentDeckId = payloadToSave.deckId;
       setMessage(`已将 ${singleForm.term.trim()} 保存到 ${selectedDeckName}。`);
@@ -312,6 +356,18 @@ export function AddWordsPage() {
               <p className="mt-2 text-sm font-medium">{decks.length} 个可用词库</p>
             </div>
           </div>
+          <div className="flex flex-col gap-2">
+            <Button variant="secondary" disabled={backfilling} onClick={() => void handleBackfillRelations()}>
+              {backfilling ? "补全现有词库中..." : "补全现有词库关系"}
+            </Button>
+            {backfillProgress ? (
+              <p className="text-xs text-muted-foreground">
+                {backfillProgress.total
+                  ? `${backfillProgress.done}/${backfillProgress.total}${backfillProgress.term ? ` · ${backfillProgress.term}` : ""}`
+                  : "正在扫描现有词库"}
+              </p>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -321,7 +377,7 @@ export function AddWordsPage() {
             "rounded-2xl border px-4 py-3 text-sm",
             errorMessage
               ? "border-destructive/40 bg-destructive/10 text-destructive"
-              : "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
+              : "border-emerald-500/40 bg-emerald-50 text-emerald-950 shadow-sm dark:bg-emerald-500/15 dark:text-emerald-50",
           )}
         >
           {errorMessage || message}
@@ -470,6 +526,30 @@ export function AddWordsPage() {
                         value={singleForm.tags}
                         onChange={(event) => setSingleForm((current) => ({ ...current, tags: event.target.value }))}
                         placeholder="例如 考研，高频，短语"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">同义词</label>
+                      <Input
+                        value={singleForm.synonyms}
+                        onChange={(event) => setSingleForm((current) => ({ ...current, synonyms: event.target.value }))}
+                        placeholder="例如 durable，flexible，tough"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">派生词 / 词形变化</label>
+                      <Input
+                        value={singleForm.derivedForms}
+                        onChange={(event) => setSingleForm((current) => ({ ...current, derivedForms: event.target.value }))}
+                        placeholder="例如 refer，reference，referential"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">反义词</label>
+                      <Input
+                        value={singleForm.antonyms}
+                        onChange={(event) => setSingleForm((current) => ({ ...current, antonyms: event.target.value }))}
+                        placeholder="例如 fragile，weak"
                       />
                     </div>
                     <div className="space-y-2">
@@ -681,6 +761,35 @@ export function AddWordsPage() {
                         <span className="text-sm text-muted-foreground">补全后自动生成</span>
                       )}
                     </div>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted">派生词 / 词形变化</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {previewDraft?.derivedForms?.length ? (
+                      previewDraft.derivedForms.map((word) => (
+                        <Badge key={`${word.term}-${word.pos}`} variant="muted">
+                          {word.term}
+                          {word.pos !== "other" ? ` · ${word.pos}` : ""}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">自动补全后显示名词、动词、形容词和副词等词形</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-muted">同义词</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {previewDraft?.synonyms?.length ? (
+                      previewDraft.synonyms.map((word) => (
+                        <Badge key={word} variant="muted">
+                          {word}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-sm text-muted-foreground">自动补全后显示，可在学习/复习时一键加入词库</span>
+                    )}
                   </div>
                 </div>
                 <div>

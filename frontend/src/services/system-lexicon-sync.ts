@@ -6,6 +6,8 @@ import { getLexiconCatalog, getLexiconItems } from "@/services/lexicon-service";
 import type { BackendLexiconDto, BackendLexiconItemDto } from "@/types/api";
 import type { Deck, WordItem, WordStatus } from "@/types/domain";
 
+const SYSTEM_LEXICON_SYNC_VERSION = 3;
+
 function normalizeTerm(term: string) {
   return term.trim().toLowerCase();
 }
@@ -75,6 +77,7 @@ function mapItemToWord(userId: string, deckId: string, dto: BackendLexiconItemDt
     exampleTranslation: dto.example?.zh || existing?.exampleTranslation || "",
     memoryHint: dto.mnemonic?.zh || existing?.memoryHint || "",
     roots: existing?.roots || [],
+    derivedForms: existing?.derivedForms || [],
     synonyms: existing?.synonyms || [],
     antonyms: existing?.antonyms || [],
     collocations: existing?.collocations || [],
@@ -119,8 +122,8 @@ type SyncSystemLexiconOptions = {
 export async function syncSystemLexicons(force = false, options: SyncSystemLexiconOptions = {}) {
   const userId = requireCurrentUserId();
   const includeWords = options.includeWords ?? true;
-  const catalogKey = `system_lexicon_catalog_synced_at:${userId}`;
-  const wordsKey = `system_lexicon_words_synced_at:${userId}`;
+  const catalogKey = `system_lexicon_catalog_synced_at:v${SYSTEM_LEXICON_SYNC_VERSION}:${userId}`;
+  const wordsKey = `system_lexicon_words_synced_at:v${SYSTEM_LEXICON_SYNC_VERSION}:${userId}`;
   const alreadySynced = await db.meta.get(includeWords ? wordsKey : catalogKey);
   if (alreadySynced && !force) {
     return;

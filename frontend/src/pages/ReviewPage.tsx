@@ -1,6 +1,7 @@
-import { ArrowLeft, CheckCircle2, Clock3, Headphones, PenSquare, Volume2, XCircle } from "lucide-react";
-import { useEffect, useState } from "react";
-import { ExampleBlock } from "@/components/shared/example-block";
+import { ArrowLeft, Clock3, Volume2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { StudyDetailTabs } from "@/components/shared/study-detail-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,10 +16,11 @@ import { useSettingsStore } from "@/stores/settings-store";
 import type { ReviewMode, ReviewResult } from "@/types/domain";
 
 const DEFAULT_REVIEW_MODE_KEY = "default-review-mode";
-const reviewOptions: Array<{ value: ReviewResult; label: string }> = [
-  { value: "remembered", label: "记住了" },
-  { value: "hesitant", label: "勉强记住" },
-  { value: "forgot", label: "忘了" },
+
+const reviewOptions: Array<{ value: ReviewResult; label: string; hint: string }> = [
+  { value: "remembered", label: "记住了", hint: "稳定" },
+  { value: "hesitant", label: "勉强", hint: "不稳" },
+  { value: "forgot", label: "忘了", hint: "重学" },
 ];
 
 const reviewModeById: Record<string, ReviewMode> = {
@@ -36,6 +38,30 @@ const reviewModeLabel: Record<ReviewMode, string> = {
   spelling: "拼写复习",
   cloze: "例句填空",
 };
+
+function getPromptTitleSize(value: string, compact = false) {
+  const isLatin = /^[A-Za-z][A-Za-z\s'-]*$/.test(value.trim());
+  if (!isLatin) return compact ? "text-2xl sm:text-4xl" : "text-3xl sm:text-5xl";
+  const length = value.replace(/\s+/g, "").length;
+  if (compact) {
+    if (length > 20) return "text-[26px] sm:text-[34px]";
+    if (length > 14) return "text-[30px] sm:text-[40px]";
+    if (length > 9) return "text-[36px] sm:text-[48px]";
+    return "text-[42px] sm:text-[56px]";
+  }
+  if (length > 20) return "text-[30px] sm:text-[40px]";
+  if (length > 14) return "text-[36px] sm:text-[48px]";
+  if (length > 9) return "text-[46px] sm:text-[56px]";
+  return "text-[56px] sm:text-[64px]";
+}
+
+type SpellingStage =
+  | "idle"
+  | "correct"
+  | "wrong_show_answer"
+  | "retry_after_hint"
+  | "retry_correct_no_score"
+  | "retry_wrong";
 
 function normalizeAnswer(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -55,6 +81,7 @@ function buildClozeExample(example: string, term: string) {
 }
 
 export function ReviewPage() {
+  const navigate = useNavigate();
   const settings = useSettingsStore((state) => state.settings);
   const {
     mode,
@@ -79,10 +106,22 @@ export function ReviewPage() {
   const [accent, setAccent] = useState<"uk" | "us">(settings.preferredAccent);
   const [committing, setCommitting] = useState(false);
   const [typedAnswer, setTypedAnswer] = useState("");
+  const [submittedAnswer, setSubmittedAnswer] = useState("");
   const [answerChecked, setAnswerChecked] = useState(false);
+  const [spellingStage, setSpellingStage] = useState<SpellingStage>("idle");
+  const spellingInputRef = useRef<HTMLInputElement | null>(null);
   const item = queue[currentIndex];
   const activeMode = activeSession?.modeSequence?.[activeSession.modeIndex] ?? mode;
   const isObjectiveMode = activeMode === "spelling" || activeMode === "cloze";
+  const isSpellingMode = activeMode === "spelling";
+
+  useEffect(() => {
+    const active = Boolean(activeSession && item);
+    document.body.classList.toggle("study-session-active", active);
+    return () => {
+      document.body.classList.remove("study-session-active");
+    };
+  }, [activeSession, item?.id]);
 
   const submitFeedback = async (result: ReviewResult) => {
     if (committing) return;
@@ -120,9 +159,11 @@ export function ReviewPage() {
   useEffect(() => {
     setPendingResult(null);
     setTypedAnswer("");
+    setSubmittedAnswer("");
     setAnswerChecked(false);
+    setSpellingStage("idle");
     hide();
-  }, [activeMode, item?.id, hide]);
+  }, [activeMode, item?.id, activeSession?.round, hide]);
 
   useEffect(() => {
     if (activeMode !== "audio" || !item || revealed) return;
@@ -140,15 +181,9 @@ export function ReviewPage() {
         return;
       }
       if (isTyping) return;
-      if (event.key === "1") {
-        submitFeedback("remembered").catch(() => undefined);
-      }
-      if (event.key === "2") {
-        submitFeedback("hesitant").catch(() => undefined);
-      }
-      if (event.key === "3") {
-        submitFeedback("forgot").catch(() => undefined);
-      }
+      if ((!isObjectiveMode || answerChecked) && event.key === "1") submitFeedback("remembered").catch(() => undefined);
+      if ((!isObjectiveMode || answerChecked) && event.key === "2") submitFeedback("hesitant").catch(() => undefined);
+      if ((!isObjectiveMode || answerChecked) && event.key === "3") submitFeedback("forgot").catch(() => undefined);
       if (event.key.toLowerCase() === "n" && pendingResult && !committing) {
         const selected = pendingResult;
         setCommitting(true);
@@ -172,20 +207,20 @@ export function ReviewPage() {
         <Card>
           <CardHeader>
             <CardTitle>本轮复习完成</CardTitle>
-            <CardDescription>复习结果已经写入本地调度引擎，后续会根据表现自动安排下一次复习。</CardDescription>
+            <CardDescription>复习结果已经写入调度引擎，后续会根据表现自动安排下一次复习。</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div className="rounded-3xl border border-border/70 bg-panel/60 p-5 text-center">
-                <p className="text-xs uppercase tracking-[0.2em] text-muted">记住了</p>
+                <p className="text-xs uppercase text-muted">记住了</p>
                 <strong className="mt-3 block text-4xl">{completedSummary.remembered}</strong>
               </div>
               <div className="rounded-3xl border border-border/70 bg-panel/60 p-5 text-center">
-                <p className="text-xs uppercase tracking-[0.2em] text-muted">勉强记住</p>
+                <p className="text-xs uppercase text-muted">勉强记住</p>
                 <strong className="mt-3 block text-4xl">{completedSummary.hesitant}</strong>
               </div>
               <div className="rounded-3xl border border-border/70 bg-panel/60 p-5 text-center">
-                <p className="text-xs uppercase tracking-[0.2em] text-muted">忘了</p>
+                <p className="text-xs uppercase text-muted">忘了</p>
                 <strong className="mt-3 block text-4xl">{completedSummary.forgot}</strong>
               </div>
             </div>
@@ -193,24 +228,13 @@ export function ReviewPage() {
               <p className="text-sm text-muted-foreground">本轮正确率</p>
               <p className="mt-2 text-4xl font-semibold">{accuracy}%</p>
               <Progress className="mt-4" value={accuracy} />
-              <div className="mt-6 space-y-3 text-sm text-muted-foreground">
-                <p>建议下一步：</p>
-                <p>1. 如果“忘了”的词较多，可以立即进入错词强化。</p>
-                <p>2. 如果正确率较高，建议继续推进今天的新词任务。</p>
-                <p>3. 系统已经把遗忘词标记为重点复习，并缩短下次间隔。</p>
-              </div>
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                <Button
-                  onClick={() => {
-                    clearCompletedSummary();
-                  }}
-                >
-                  继续复习
-                </Button>
+                <Button onClick={() => clearCompletedSummary()}>继续复习</Button>
                 <Button
                   variant="secondary"
                   onClick={() => {
                     clearCompletedSummary();
+                    navigate("/");
                   }}
                 >
                   返回控制台
@@ -229,7 +253,7 @@ export function ReviewPage() {
         <Card>
           <CardContent className="flex flex-col gap-4 p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-muted">复习模式</p>
+              <p className="text-xs uppercase text-muted">复习模式</p>
               <h1 className="mt-2 text-2xl font-semibold leading-tight sm:text-3xl">今天先做回忆判断，再处理最容易遗忘的词。</h1>
             </div>
             <div className="scrollbar-subtle overflow-x-auto">
@@ -241,9 +265,7 @@ export function ReviewPage() {
                     onClick={() => setMode(reviewModeById[itemMode.id] || "en_to_zh")}
                     className={cn(
                       "rounded-xl px-4 py-2 text-sm font-medium transition-all",
-                      mode === reviewModeById[itemMode.id]
-                        ? "bg-white text-slate-950"
-                        : "text-muted-foreground hover:text-foreground",
+                      mode === reviewModeById[itemMode.id] ? "bg-white text-slate-950" : "text-muted-foreground hover:text-foreground",
                     )}
                   >
                     {itemMode.label}
@@ -257,7 +279,7 @@ export function ReviewPage() {
         <Card>
           <CardContent className="grid gap-6 p-5 sm:p-8 xl:grid-cols-[1fr_0.92fr]">
             <div className="space-y-4">
-              <p className="text-xs uppercase tracking-[0.22em] text-muted">复习准备</p>
+              <p className="text-xs uppercase text-muted">复习准备</p>
               <h2 className="text-2xl font-semibold leading-tight sm:text-3xl">复习页会优先加载逾期词、到期词和薄弱词。</h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 当前支持英文→中文、中文→英文、听音辨义、拼写复习和例句填空。答题记录会更新记忆强度、错误次数和下次复习时间。
@@ -285,27 +307,29 @@ export function ReviewPage() {
     activeMode === "zh_to_en" || activeMode === "spelling"
       ? meaningsText
       : activeMode === "audio"
-        ? "先听发音，再回忆中文含义"
+        ? "听发音，回忆含义"
         : activeMode === "cloze"
           ? clozeText
           : item.term;
   const currentScore = activeSession?.scoreMap?.[item.id] || 0;
   const nextScore = pendingResult
-    ? Math.min(3, currentScore + (pendingResult === "remembered" ? 3 : pendingResult === "hesitant" ? 1 : 0))
+    ? Math.min(3, currentScore + (pendingResult === "remembered" || pendingResult === "hesitant" ? 1 : 0))
     : currentScore;
   const progress = queue.length ? Math.round(((currentIndex + 1) / queue.length) * 100) : 0;
   const activeModeLabel = reviewModeLabel[activeMode];
   const typedCorrect = normalizeAnswer(typedAnswer) === normalizeAnswer(item.term);
+  const selectedFeedback = reviewOptions.find((option) => option.value === pendingResult);
+  const spellingCanCommit = isSpellingMode && (spellingStage === "correct" || spellingStage === "retry_correct_no_score");
   const promptHint =
     activeMode === "zh_to_en"
-      ? "输入或默想英文单词，再展开答案核对。"
+      ? "先默想英文单词，再展开答案核对。"
       : activeMode === "audio"
         ? "点击音标可重播发音，先不要看拼写。"
         : activeMode === "spelling"
           ? "根据中文释义拼写英文单词。"
           : activeMode === "cloze"
             ? "根据例句空格补全当前单词。"
-            : "先回忆中文含义，再决定你的掌握程度。";
+            : "先回忆中文含义，再判断掌握程度。";
 
   const commitAndNext = async () => {
     if (!pendingResult || committing) return;
@@ -313,6 +337,10 @@ export function ReviewPage() {
     try {
       await commitReviewFeedback(pendingResult);
       setPendingResult(null);
+      setTypedAnswer("");
+      setSubmittedAnswer("");
+      setAnswerChecked(false);
+      setSpellingStage("idle");
       hide();
     } finally {
       setCommitting(false);
@@ -320,61 +348,172 @@ export function ReviewPage() {
   };
 
   function checkTypedAnswer() {
+    const normalizedCorrect = normalizeAnswer(typedAnswer) === normalizeAnswer(item.term);
+    if (isSpellingMode) {
+      const cleanAnswer = typedAnswer.trim();
+      setSubmittedAnswer(cleanAnswer || "未输入");
+      setAnswerChecked(true);
+      reveal();
+
+      if (!cleanAnswer) {
+        setPendingResult(null);
+        setSpellingStage("wrong_show_answer");
+        return;
+      }
+
+      if (spellingStage === "retry_after_hint") {
+        if (normalizedCorrect) {
+          setPendingResult("forgot");
+          setSpellingStage("retry_correct_no_score");
+        } else {
+          setPendingResult(null);
+          setSpellingStage("retry_wrong");
+        }
+        if (settings.autoPlayPronunciation && normalizedCorrect) {
+          void playPronunciation(item, accent);
+        }
+        return;
+      }
+
+      if (normalizedCorrect) {
+        setPendingResult("remembered");
+        setSpellingStage("correct");
+        if (settings.autoPlayPronunciation) {
+          void playPronunciation(item, accent);
+        }
+        return;
+      }
+
+      setPendingResult(null);
+      setSpellingStage("wrong_show_answer");
+      return;
+    }
     if (!typedAnswer.trim()) return;
     setAnswerChecked(true);
-    setPendingResult(typedCorrect ? "remembered" : "forgot");
+    setPendingResult(normalizedCorrect ? "remembered" : "forgot");
     reveal();
-    if (settings.autoPlayPronunciation && typedCorrect) {
+    if (settings.autoPlayPronunciation && normalizedCorrect) {
       void playPronunciation(item, accent);
     }
   }
 
+  function retrySpellingAfterHint() {
+    setTypedAnswer("");
+    setSubmittedAnswer("");
+    setAnswerChecked(false);
+    setPendingResult(null);
+    setSpellingStage("retry_after_hint");
+    hide();
+    window.setTimeout(() => spellingInputRef.current?.focus(), 0);
+  }
+
+  const spellingPrimaryLabel =
+    spellingStage === "wrong_show_answer"
+      ? "再拼一次"
+      : spellingStage === "correct"
+        ? "下一词"
+        : spellingStage === "retry_correct_no_score"
+          ? "继续"
+          : spellingStage === "retry_wrong"
+            ? "再拼一次"
+          : "提交";
+
+  const handleSpellingPrimaryAction = () => {
+    if (spellingStage === "wrong_show_answer" || spellingStage === "retry_wrong") {
+      retrySpellingAfterHint();
+      return;
+    }
+    if (spellingCanCommit) {
+      commitAndNext().catch(() => undefined);
+      return;
+    }
+    checkTypedAnswer();
+  };
+
+  const spellingFeedbackMessage =
+    spellingStage === "correct"
+      ? "很好，这次是在没有提示的情况下拼对，已计入掌握。"
+      : spellingStage === "wrong_show_answer"
+        ? "先看一遍正确拼写，再重新拼一次。"
+        : spellingStage === "retry_after_hint"
+          ? "已清空输入。请根据刚刚看过的正确拼写再练一次，本次不计分。"
+          : spellingStage === "retry_correct_no_score"
+            ? "这次拼对了，但因为刚刚看过答案，所以不计入掌握。稍后会再次出现。"
+            : spellingStage === "retry_wrong"
+              ? "这次仍然没有拼对。先看正确拼写，再拼一次，拼对后才能进入下一个词。"
+              : "";
+  const spellingFeedbackIsPositive = spellingStage === "correct" || spellingStage === "retry_correct_no_score";
+  const spellingPrimaryDisabled =
+    committing ||
+    (spellingStage === "correct" && !pendingResult) ||
+    (spellingStage === "retry_correct_no_score" && !pendingResult);
+
   return (
-    <div className="space-y-5 pb-28 sm:space-y-6 lg:pb-6">
-      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr] xl:gap-6">
-        <Card className="min-h-[520px] sm:min-h-[620px]">
-          <CardContent className="flex h-full flex-col p-4 sm:p-6">
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="icon" className="h-9 w-9 rounded-lg" onClick={() => abandonSession().catch(() => undefined)} title="返回复习模式">
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <span>{activeModeLabel}</span>
-                  <span>
-                    {currentIndex + 1}/{queue.length} · {nextScore}/3
-                  </span>
-                </div>
-                <Progress className="mt-2" value={progress} />
+    <div className="mx-auto flex h-[calc(100dvh-2rem)] max-w-3xl flex-col overflow-hidden rounded-[28px] border border-border/70 bg-card/88 shadow-card sm:h-[calc(100dvh-2.5rem)] lg:h-auto lg:min-h-[calc(100dvh-8rem)]">
+      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto]">
+        <header className="border-b border-border/70 bg-card/80 px-3 py-3 backdrop-blur sm:px-5">
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-full" onClick={() => abandonSession().catch(() => undefined)} title="返回复习模式">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span className="truncate">{activeModeLabel}</span>
+                <span className="shrink-0 font-medium text-foreground">
+                  {currentIndex + 1}/{queue.length}
+                </span>
               </div>
+              <Progress className="mt-2 h-1.5" value={progress} />
+            </div>
+            <button
+              type="button"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 bg-panel/60 text-muted-foreground transition hover:text-foreground"
+              title="稍后再出现"
+              onClick={() => postpone().catch(() => undefined)}
+            >
+              <Clock3 className="h-4 w-4" />
+            </button>
+          </div>
+        </header>
+
+        <main className="scrollbar-subtle min-h-0 overflow-y-auto px-4 py-4 sm:px-6">
+          <section className="mx-auto flex min-h-full w-full max-w-2xl flex-col">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">{activeModeLabel}</Badge>
+              <Badge variant={revealed ? "muted" : "secondary"}>{revealed ? selectedFeedback?.label || "已展开" : "先回忆"}</Badge>
             </div>
 
-            <div className="flex flex-1 flex-col items-center justify-center pt-7 text-center sm:pt-10">
-            <Badge variant="secondary">{activeMode === "audio" ? "听音辨义" : activeMode === "spelling" ? "拼写复习" : activeMode === "cloze" ? "例句填空" : "回忆强化"}</Badge>
-            <h2 className={cn("mt-4 break-words font-semibold", activeMode === "cloze" ? "text-2xl leading-relaxed sm:text-3xl" : "text-4xl sm:text-5xl lg:text-6xl")}>
-              {prompt}
-            </h2>
-            {(activeMode !== "zh_to_en" || revealed) && (
-              <div className="mt-4 flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap">
-                <div className="flex items-center rounded-full border border-border p-1">
-                  <button
-                    type="button"
-                    className={cn("rounded-full px-3 py-1.5 text-xs font-medium", accent === "us" ? "bg-white text-slate-950" : "text-muted-foreground")}
-                    onClick={() => setAccent("us")}
-                  >
-                    美音
-                  </button>
-                  <button
-                    type="button"
-                    className={cn("rounded-full px-3 py-1.5 text-xs font-medium", accent === "uk" ? "bg-white text-slate-950" : "text-muted-foreground")}
-                    onClick={() => setAccent("uk")}
-                  >
-                    英音
-                  </button>
+            <div className={cn("pt-5", revealed ? "pb-3" : "pb-8")}>
+              <h2
+                className={cn(
+                  "max-w-full overflow-hidden text-ellipsis font-semibold leading-tight tracking-normal",
+                  activeMode === "cloze" ? "whitespace-normal text-2xl sm:text-3xl" : "whitespace-nowrap",
+                  activeMode === "cloze" ? "" : getPromptTitleSize(prompt, revealed),
+                )}
+                title={prompt}
+              >
+                {prompt}
+              </h2>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-muted-foreground">
+                <div className="flex h-9 items-center rounded-full border border-border/70 bg-panel/70 p-1">
+                  {(["us", "uk"] as const).map((itemAccent) => (
+                    <button
+                      key={itemAccent}
+                      type="button"
+                      className={cn(
+                        "h-7 rounded-full px-2.5 text-xs font-semibold transition",
+                        accent === itemAccent ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
+                      )}
+                      onClick={() => setAccent(itemAccent)}
+                    >
+                      {itemAccent === "us" ? "美" : "英"}
+                    </button>
+                  ))}
                 </div>
                 <button
                   type="button"
-                  className="inline-flex min-h-10 items-center gap-2 rounded-full border border-border bg-panel/70 px-4 py-2 text-sm text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+                  className="inline-flex h-9 items-center gap-2 rounded-full border border-border/70 bg-panel/70 px-3 text-sm transition hover:border-primary/50 hover:text-foreground"
                   onClick={() => playPronunciation(item, accent).catch(() => undefined)}
                   title="播放发音"
                 >
@@ -382,165 +521,156 @@ export function ReviewPage() {
                   <span>{item.phonetic || "暂无音标"}</span>
                 </button>
               </div>
-            )}
-            <p className="mt-4 max-w-[560px] text-sm text-muted-foreground sm:text-base">
-              {promptHint}
-            </p>
+            </div>
 
-            {isObjectiveMode && (
-              <div className="mt-7 w-full max-w-[560px] space-y-3">
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  <Input
-                    value={typedAnswer}
-                    onChange={(event) => {
-                      setTypedAnswer(event.target.value);
-                      setAnswerChecked(false);
-                      setPendingResult(null);
-                      hide();
-                    }}
-                    placeholder={activeMode === "cloze" ? "填写例句中的空格" : "输入英文单词"}
-                    disabled={committing}
-                    className="h-12 rounded-xl text-center text-lg"
-                  />
-                  <Button className="h-12 rounded-xl sm:w-32" disabled={!typedAnswer.trim() || committing || answerChecked} onClick={checkTypedAnswer}>
-                    检查答案
-                  </Button>
+            {!revealed ? (
+              <div className="flex flex-1 items-center">
+                <div className="w-full rounded-[24px] border border-dashed border-border/70 bg-panel/35 p-5 text-sm leading-6 text-muted-foreground">
+                  {promptHint}
+                  {!isObjectiveMode ? <p className="mt-2">先在心里作答，再用底部按钮判断掌握程度。</p> : null}
                 </div>
-                {answerChecked && (
+              </div>
+            ) : (
+              <div className="space-y-3 pb-2">
+                <div className="rounded-[22px] border border-border/70 bg-panel/60 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-semibold">答案反馈</p>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {selectedFeedback ? <Badge variant="secondary">已选：{selectedFeedback.label}</Badge> : null}
+                      <Badge variant="muted">{nextScore}/3 分</Badge>
+                    </div>
+                  </div>
+                  <p className="mt-3 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-2xl font-semibold tracking-normal" title={item.term}>
+                    {item.term}
+                  </p>
+                  <p className="mt-2 text-base leading-7">{meaningsText}</p>
+                  {activeMode === "cloze" && item.exampleTranslation ? (
+                    <p className="mt-3 rounded-2xl bg-white/5 p-3 text-sm leading-6 text-muted-foreground">{item.exampleTranslation}</p>
+                  ) : null}
+                </div>
+
+                <StudyDetailTabs
+                  deckId={item.deckId}
+                  currentTerm={item.term}
+                  collocations={item.collocations}
+                  derivedForms={item.derivedForms || []}
+                  synonyms={item.synonyms}
+                  antonyms={item.antonyms}
+                  example={item.example}
+                  exampleTranslation={item.exampleTranslation}
+                  preferredAccent={accent}
+                />
+              </div>
+            )}
+
+            {isObjectiveMode ? (
+              <div className="mt-4 w-full space-y-3">
+                <Input
+                  ref={spellingInputRef}
+                  key={`${item.id}:${activeSession?.round || 1}:${activeMode}`}
+                  value={typedAnswer}
+                  onChange={(event) => {
+                    setTypedAnswer(event.target.value);
+                    setAnswerChecked(false);
+                    setPendingResult(null);
+                    setSubmittedAnswer("");
+                    if (isSpellingMode && spellingStage !== "retry_after_hint") {
+                      setSpellingStage("idle");
+                    }
+                    hide();
+                  }}
+                  placeholder={activeMode === "cloze" ? "填写例句中的空格" : "输入英文单词"}
+                  disabled={
+                    committing ||
+                    (isSpellingMode &&
+                      (spellingStage === "correct" ||
+                        spellingStage === "wrong_show_answer" ||
+                        spellingStage === "retry_correct_no_score" ||
+                        spellingStage === "retry_wrong"))
+                  }
+                  className="h-11 rounded-full text-center text-lg"
+                />
+                {answerChecked ? (
                   <div
                     className={cn(
                       "rounded-2xl border px-4 py-3 text-sm",
-                      typedCorrect ? "border-success/30 bg-success/10 text-success" : "border-destructive/30 bg-destructive/10 text-destructive",
+                      isSpellingMode
+                        ? spellingFeedbackIsPositive
+                          ? "border-success/30 bg-success/10 text-success"
+                          : "border-destructive/30 bg-destructive/10 text-destructive"
+                        : typedCorrect
+                          ? "border-success/30 bg-success/10 text-success"
+                          : "border-destructive/30 bg-destructive/10 text-destructive",
                     )}
                   >
-                    {typedCorrect ? "拼写正确，可以进入下一词。" : `正确答案：${item.term}`}
+                    {isSpellingMode ? (
+                      <div className="space-y-1 text-left">
+                        <p>{spellingFeedbackMessage}</p>
+                        {spellingStage === "wrong_show_answer" || spellingStage === "retry_wrong" ? (
+                          <>
+                            <p>
+                              正确拼写：<strong>{item.term}</strong>
+                            </p>
+                            <p>
+                              你的输入：<strong>{submittedAnswer || typedAnswer}</strong>
+                            </p>
+                          </>
+                        ) : null}
+                      </div>
+                    ) : typedCorrect ? (
+                      "拼写正确，可以进入下一词。"
+                    ) : (
+                      `正确答案：${item.term}`
+                    )}
                   </div>
-                )}
-                {activeMode === "cloze" && item.exampleTranslation ? (
-                  <p className="text-sm leading-6 text-muted-foreground">{item.exampleTranslation}</p>
                 ) : null}
               </div>
-            )}
+            ) : null}
+          </section>
+        </main>
 
-            <div className="mt-8 w-full max-w-[760px] space-y-3 sm:mt-10">
-              {(!isObjectiveMode || answerChecked) && (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {reviewOptions.map((option) => (
-                    <Button
-                      key={option.value}
-                      size="lg"
-                      variant={pendingResult === option.value ? "default" : "outline"}
-                      className={cn(
-                        "border-border/80 bg-panel/50",
-                        pendingResult === option.value && "border-primary bg-primary text-primary-foreground ring-2 ring-primary/30",
-                      )}
-                      disabled={committing}
-                      onClick={() => submitFeedback(option.value).catch(() => undefined)}
-                    >
-                      {option.label}
-                    </Button>
-                  ))}
-                <Button size="lg" variant="ghost" disabled={!pendingResult || committing} onClick={() => commitAndNext().catch(() => undefined)}>
-                  {committing ? "提交中..." : "下一词"}
+        <footer className="border-t border-border/70 bg-card/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:px-5">
+          {isSpellingMode ? (
+            <Button className="h-11 w-full rounded-2xl" disabled={spellingPrimaryDisabled} onClick={handleSpellingPrimaryAction}>
+              {committing ? "提交中..." : spellingPrimaryLabel}
+            </Button>
+          ) : isObjectiveMode && !revealed ? (
+            <Button className="h-11 w-full rounded-2xl" disabled={!typedAnswer.trim() || committing || answerChecked} onClick={checkTypedAnswer}>
+              检查答案
+            </Button>
+          ) : !revealed ? (
+            <div className="grid grid-cols-3 gap-2">
+              {reviewOptions.map((option) => (
+                <Button
+                  key={option.value}
+                  variant="outline"
+                  className="h-11 rounded-2xl border-border/80 bg-panel/55 px-2 text-sm"
+                  disabled={committing}
+                  onClick={() => submitFeedback(option.value).catch(() => undefined)}
+                >
+                  {option.label}
                 </Button>
-                </div>
-              )}
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {!pendingResult && !isObjectiveMode && (
-                  <Button variant="secondary" className="w-full" onClick={() => (revealed ? hide() : reveal())}>
-                    {revealed ? "隐藏答案" : "显示答案"}
-                  </Button>
-                )}
-                <Button variant="ghost" className="w-full" disabled={committing} onClick={() => postpone().catch(() => undefined)}>
-                  稍后再出现
-                </Button>
-              </div>
+              ))}
             </div>
-
-            {revealed && (
-              <div className="mt-8 w-full max-w-[560px] rounded-3xl border border-border/70 bg-panel/60 p-5 text-left sm:mt-10 sm:p-6">
-                <p className="text-xs uppercase tracking-[0.22em] text-muted">答案反馈</p>
-                <p className="mt-3 text-2xl font-medium">{item.term}</p>
-                <p className="mt-2 text-base">{item.meanings.join("；") || "暂无释义"}</p>
-                <div className="mt-4">
-                  <ExampleBlock
-                    title="例句"
-                    example={item.example || ""}
-                    translation={item.exampleTranslation || ""}
-                    preferredAccent={accent}
-                    autoPlay={settings.autoPlayExampleSentence && revealed}
-                  />
-                </div>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {item.memoryHint && <Badge variant="warning">记忆提示</Badge>}
-                  {item.isFocused && <Badge variant="muted">重点复习</Badge>}
-                </div>
-              </div>
-            )}
+          ) : (
+            <div className="grid grid-cols-[0.8fr_1.2fr] gap-2">
+              <Button
+                variant="secondary"
+                className="h-11 rounded-2xl"
+                disabled={committing}
+                onClick={() => {
+                  setPendingResult("forgot");
+                  reveal();
+                }}
+              >
+                记错了
+              </Button>
+              <Button className="h-11 rounded-2xl" disabled={!pendingResult || committing} onClick={() => commitAndNext().catch(() => undefined)}>
+                {committing ? "提交中..." : "下一词"}
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-5 sm:space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>答题反馈区</CardTitle>
-              <CardDescription>强化“判断”和“矫正”的反馈，而不是资料堆叠。</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-start gap-3 rounded-2xl border border-success/20 bg-success/10 p-4">
-                <CheckCircle2 className="mt-0.5 h-5 w-5 text-success" />
-                <div>
-                  <p className="font-medium text-success">记住了</p>
-                  <p className="mt-1 text-sm text-muted-foreground">记忆稳定，下次会进入更长的复习间隔。</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 rounded-2xl border border-destructive/20 bg-destructive/10 p-4">
-                <XCircle className="mt-0.5 h-5 w-5 text-destructive" />
-                <div>
-                  <p className="font-medium text-destructive">忘了</p>
-                  <p className="mt-1 text-sm text-muted-foreground">会缩短下次复习时间，并标记为重点词。</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <Button variant="secondary" onClick={() => postpone().catch(() => undefined)}>稍后再次出现</Button>
-                <Button variant="outline" onClick={() => abandonSession().catch(() => undefined)}>退出并保存</Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>本轮复习进度</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-white/5 p-4">
-                  <p className="text-xs text-muted-foreground">已完成</p>
-                  <strong className="mt-2 block text-2xl sm:text-3xl">{currentIndex}</strong>
-                </div>
-                <div className="rounded-2xl bg-white/5 p-4">
-                  <p className="text-xs text-muted-foreground">剩余题数</p>
-                  <strong className="mt-2 block text-2xl sm:text-3xl">{queue.length - currentIndex - 1}</strong>
-                </div>
-              </div>
-              <Progress value={Math.round(((currentIndex + 1) / queue.length) * 100)} />
-              <div className="rounded-2xl border border-border/70 bg-panel/60 p-4">
-                <p className="text-sm font-medium">当前复习重点</p>
-                <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2"><Headphones className="h-4 w-4" />优先清掉到期词和薄弱词</li>
-                  <li className="flex items-center gap-2"><PenSquare className="h-4 w-4" />先回忆，再显示答案，避免被动浏览</li>
-                </ul>
-              </div>
-              <div className="rounded-2xl border border-border/70 bg-panel/60 p-4">
-                <div className="flex items-center gap-2">
-                  <Clock3 className="h-4 w-4 text-primary" />
-                  <p className="text-sm text-muted-foreground">预计剩余时间：{Math.max(1, queue.length - currentIndex - 1)} 分钟</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+          )}
+        </footer>
       </div>
     </div>
   );

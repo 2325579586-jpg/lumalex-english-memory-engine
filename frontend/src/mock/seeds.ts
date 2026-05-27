@@ -64,6 +64,15 @@ export const seedDecks: Deck[] = [
     createdAt: now,
     updatedAt: now,
   },
+  {
+    id: "system-daily-life",
+    name: "日常生活用词",
+    description: "日期、月份、水果、蔬菜和日常口语表达",
+    sourceType: "system",
+    totalCount: 93,
+    createdAt: now,
+    updatedAt: now,
+  },
 ];
 
 export const seedWords: WordItem[] = [];

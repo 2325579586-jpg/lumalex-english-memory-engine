@@ -12,7 +12,7 @@ export function AppShell({ children }: PropsWithChildren) {
       <Sidebar />
       <div className="flex min-h-screen min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="flex-1 overflow-auto px-4 py-4 pb-28 sm:px-5 sm:py-5 sm:pb-28 lg:px-8 lg:py-8 lg:pb-8">
+        <main className="app-main flex-1 overflow-auto px-4 py-4 pb-28 sm:px-5 sm:py-5 sm:pb-28 lg:px-8 lg:py-8 lg:pb-8">
           <div className={mode === "focus" ? "mx-auto max-w-[1100px]" : "mx-auto max-w-[1360px]"}>
             <MobileSyncBar />
             {children}
