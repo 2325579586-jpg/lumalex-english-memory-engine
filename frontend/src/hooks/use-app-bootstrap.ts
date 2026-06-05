@@ -3,7 +3,7 @@ import { useAppStore } from "@/stores/app-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useUiStore } from "@/stores/ui-store";
-import { flushCloudDataSync, hasPendingCloudSync, syncCloudData } from "@/services/cloud-sync-service";
+import { hasPendingCloudSync, syncCloudData } from "@/services/cloud-sync-service";
 import { readStorage, writeStorage } from "@/services/storage";
 
 const NOTIFICATION_SETTINGS_KEY = "notification-settings";
@@ -57,28 +57,16 @@ export function useAppBootstrap() {
         syncNow();
       }
     };
-    const syncWhenHidden = () => {
-      if (document.visibilityState === "hidden") {
-        flushCloudDataSync();
-      }
-    };
-    const syncOnPageHide = () => {
-      flushCloudDataSync();
-    };
 
     window.addEventListener("focus", syncNow);
     window.addEventListener("online", syncPendingFirst);
     document.addEventListener("visibilitychange", syncWhenVisible);
-    document.addEventListener("visibilitychange", syncWhenHidden);
-    window.addEventListener("pagehide", syncOnPageHide);
     const interval = window.setInterval(syncNow, 20_000);
 
     return () => {
       window.removeEventListener("focus", syncNow);
       window.removeEventListener("online", syncPendingFirst);
       document.removeEventListener("visibilitychange", syncWhenVisible);
-      document.removeEventListener("visibilitychange", syncWhenHidden);
-      window.removeEventListener("pagehide", syncOnPageHide);
       window.clearInterval(interval);
     };
   }, [authStatus, session]);

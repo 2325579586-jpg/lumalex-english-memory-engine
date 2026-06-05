@@ -108,7 +108,7 @@ export function ExampleBlock({
                   key={`${token}-${index}`}
                   type="button"
                   className={`rounded px-0.5 transition hover:bg-primary/10 hover:text-primary ${
-                    selectedToken === token ? "bg-primary/12 text-primary" : ""
+                    selectedToken === token ? "bg-primary/[0.12] text-primary" : ""
                   }`}
                   onClick={() => void chooseToken(token)}
                 >

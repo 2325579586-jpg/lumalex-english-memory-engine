@@ -36,40 +36,40 @@ export function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4 py-8 text-foreground sm:px-6">
-      <div className="grid w-full max-w-6xl gap-6 lg:gap-8 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="overflow-hidden">
+    <div className="flex min-h-screen items-center justify-center overflow-x-hidden bg-background px-4 py-8 text-foreground sm:px-6">
+      <div className="grid w-full max-w-6xl grid-cols-[minmax(0,1fr)] gap-6 lg:gap-8 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <Card className="w-full min-w-0 max-w-full overflow-hidden">
           <CardContent className="flex h-full flex-col justify-between gap-8 p-6 sm:p-8 lg:p-10">
             <div>
               <p className="text-xs uppercase tracking-[0.28em] text-muted">LumaLex Account</p>
-              <h1 className="mt-4 max-w-xl text-3xl font-semibold leading-tight sm:text-4xl">
+              <h1 className="mt-4 max-w-xl break-words text-3xl font-bold leading-tight text-balance [overflow-wrap:anywhere] sm:text-4xl">
                 先登录你的账号，再进入完整的背词学习系统。
               </h1>
-              <p className="mt-4 max-w-xl text-sm leading-7 text-muted-foreground">
+              <p className="mt-4 max-w-xl text-sm leading-7 text-muted-foreground [overflow-wrap:anywhere]">
                 账号系统现在是应用的底层能力。系统词库由所有用户共享，自定义词库、学习进度、复习计划和统计数据都会严格归属于当前账号。
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-3xl border border-border/70 bg-panel/60 p-5">
+              <div className="min-w-0 rounded-3xl border border-border/70 bg-panel/60 p-5">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted">系统词库</p>
                 <p className="mt-3 text-lg font-semibold">共享内容</p>
-                <p className="mt-2 text-sm text-muted-foreground">所有用户使用同一套预设词库。</p>
+                <p className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">所有用户使用同一套预设词库。</p>
               </div>
-              <div className="rounded-3xl border border-border/70 bg-panel/60 p-5">
+              <div className="min-w-0 rounded-3xl border border-border/70 bg-panel/60 p-5">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted">自定义词库</p>
                 <p className="mt-3 text-lg font-semibold">按账号归属</p>
-                <p className="mt-2 text-sm text-muted-foreground">你的自建词库只属于你自己，不与其他账号混用。</p>
+                <p className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">你的自建词库只属于你自己，不与其他账号混用。</p>
               </div>
-              <div className="rounded-3xl border border-border/70 bg-panel/60 p-5">
+              <div className="min-w-0 rounded-3xl border border-border/70 bg-panel/60 p-5">
                 <p className="text-xs uppercase tracking-[0.16em] text-muted">学习数据</p>
                 <p className="mt-3 text-lg font-semibold">隔离保存</p>
-                <p className="mt-2 text-sm text-muted-foreground">学习记录、复习记录、统计和设置都会独立保存。</p>
+                <p className="mt-2 text-sm text-muted-foreground [overflow-wrap:anywhere]">学习记录、复习记录、统计和设置都会独立保存。</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="mx-auto w-full max-w-xl">
+        <Card className="mx-auto w-full min-w-0 max-w-xl">
           <CardHeader className="p-6 sm:p-8">
             <div className="flex items-center gap-2 rounded-2xl border border-border bg-panel p-1">
               <button

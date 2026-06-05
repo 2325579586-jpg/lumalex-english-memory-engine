@@ -10,9 +10,11 @@ The product idea is simple: learn a word once, then let the system keep bringing
 - Memory scheduling: review results update strength, wrong counts, focus status, and next review time.
 - Cross-device account sync: vocabulary, learning history, review progress, settings, and active sessions can follow the same account.
 - Offline-friendly dictionary: fast local lookup backed by a sharded built-in dictionary, plus optional AI completion.
+- AI relation-word explorer: fetches lookalikes, synonyms, antonyms, and derived expressions inside study detail views.
 - Pronunciation workflow: switch between US and UK accents and replay from the phonetic area.
 - Example-based learning: clickable words inside example sentences can be quickly added to a deck.
 - Word relations panel: derived forms, roots, collocations, synonyms/antonyms, and example recall helpers during study.
+- System lexicons: built-in CET-4, CET-4 translation phrases, and CET-6 collections can be seeded for guided study.
 - Local-first frontend: IndexedDB keeps the app responsive, while cloud sync keeps devices aligned.
 - Mobile-focused UI: compact review cards, bottom navigation, and large touch targets for phone use.
 
@@ -71,11 +73,13 @@ npm install
 npm run dev
 ```
 
+On Windows PowerShell, `npm` may be blocked by execution policy; use `npm.cmd` instead.
+
 Build the production frontend:
 
 ```bash
 cd frontend
-npm run build
+npm.cmd run build
 ```
 
 ## Environment

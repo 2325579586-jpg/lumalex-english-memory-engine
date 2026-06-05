@@ -271,7 +271,12 @@ function fallbackEnrichment(term: string): EnrichedDraft {
 }
 
 function hasGenericFallbackMeaning(value: string) {
-  return value.includes("\u5e38\u7528\u82f1\u6587\u8bcd\u6c47") || value.includes("\u5efa\u8bae\u7a0d\u540e");
+  return (
+    value.includes("\u5e38\u7528\u82f1\u6587\u8bcd\u6c47") ||
+    value.includes("\u5e38\u7528\u82f1\u6587\u77ed\u8bed") ||
+    value.includes("\u76f8\u5173\u7684\u5e38\u7528") ||
+    value.includes("\u5efa\u8bae\u7a0d\u540e")
+  );
 }
 
 function assertUsefulMeaning(term: string, meaning: string) {
@@ -280,6 +285,25 @@ function assertUsefulMeaning(term: string, meaning: string) {
     throw new Error(`AI \u6ca1\u6709\u8fd4\u56de ${term} \u7684\u771f\u5b9e\u4e2d\u6587\u91ca\u4e49\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002`);
   }
   return cleanMeaning;
+}
+
+function hasGenericFallbackExample(term: string, value: string) {
+  const normalized = value.trim().toLowerCase().replace(/[.。]/g, "").replace(/\s+/g, " ");
+  const cleanTerm = term.trim().toLowerCase().replace(/\s+/g, " ");
+  return (
+    !normalized ||
+    (normalized.includes(`remember ${cleanTerm} more easily`) && normalized.includes("real sentence")) ||
+    normalized.includes("try to use") ||
+    normalized.includes("in a sentence you might actually say")
+  );
+}
+
+function assertUsefulExample(term: string, example: string) {
+  const cleanExample = example.trim();
+  if (hasGenericFallbackExample(term, cleanExample)) {
+    throw new Error(`AI \u6ca1\u6709\u8fd4\u56de ${term} \u7684\u771f\u5b9e\u82f1\u6587\u4f8b\u53e5\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002`);
+  }
+  return cleanExample;
 }
 
 export async function requestAutoEnrich(term: string): Promise<EnrichedDraft> {
@@ -314,22 +338,25 @@ export async function requestAutoEnrich(term: string): Promise<EnrichedDraft> {
       exampleZh?: string;
       mnemonicZh?: string;
       audioUrl?: string;
+      provider?: string;
       synonyms?: string[] | string;
       antonyms?: string[] | string;
       wordForms?: Array<{ term?: string; word?: string; pos?: string; partOfSpeech?: string; meaning?: string; meaningZh?: string }>;
     };
 
-    const fallback = fallbackEnrichment(clean);
+    if (payload.provider && payload.provider !== "compatible-llm") {
+      throw new Error(`AI \u81ea\u52a8\u8865\u5168\u672a\u6210\u529f\uff0c\u5f53\u524d\u8fd4\u56de\u4e86 ${payload.provider} \u5360\u4f4d\u7ed3\u679c\u3002`);
+    }
 
     return {
       term: payload.text || clean,
       kind: payload.kind || inferType(clean),
-      phonetic: payload.phonetic || fallback.phonetic,
-      partOfSpeech: payload.pos || fallback.partOfSpeech,
+      phonetic: payload.phonetic || "",
+      partOfSpeech: payload.pos || (inferType(clean) === "phrase" ? "phrase" : ""),
       meanings: [assertUsefulMeaning(clean, payload.meaning || "")],
-      example: payload.exampleEn || fallback.example,
-      exampleTranslation: payload.exampleZh || fallback.exampleTranslation,
-      memoryHint: payload.mnemonicZh || fallback.memoryHint,
+      example: assertUsefulExample(clean, payload.exampleEn || ""),
+      exampleTranslation: payload.exampleZh || "",
+      memoryHint: payload.mnemonicZh || "",
       pronunciationUk: payload.audioUrl || "",
       pronunciationUs: payload.audioUrl || "",
       tags: [inferDifficultyTag(clean), "自动补全"],

@@ -275,7 +275,7 @@ export function DashboardPage() {
               <div key={value.label} className="flex flex-1 flex-col items-center gap-2">
                 <div className="flex w-full items-end gap-1">
                   <div
-                    className="w-1/2 rounded-t-xl bg-primary/85"
+                    className="w-1/2 rounded-t-xl bg-primary/[0.85]"
                     style={{ height: `${getNormalizedMiniBarHeight(value.learn, trendScale.maxLearn)}px` }}
                   />
                   <div
@@ -294,8 +294,8 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-6 sm:space-y-8 lg:space-y-10">
-      <Card className="overflow-hidden border-border/80 bg-card/95 shadow-none">
-        <CardContent className="space-y-6 p-5 sm:p-7 lg:p-8">
+      <Card className="dashboard-hero-card overflow-hidden border-white/[0.1] bg-card/[0.92] shadow-soft">
+        <CardContent className="relative space-y-6 p-5 sm:p-7 lg:p-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <Badge variant="secondary" className="shrink-0">当前词库</Badge>
@@ -322,8 +322,8 @@ export function DashboardPage() {
 
           <div className="grid gap-5 xl:grid-cols-[0.78fr_1.22fr] xl:items-end">
             <div className="space-y-3">
-              <p className="text-sm font-medium text-primary">{primaryHint}</p>
-              <h1 className="text-3xl font-semibold leading-tight tracking-tight text-balance sm:text-4xl lg:text-5xl">
+              <p className="text-sm font-semibold text-primary">{primaryHint}</p>
+              <h1 className="max-w-[520px] text-3xl font-bold leading-tight tracking-normal text-balance sm:text-4xl lg:text-5xl">
                 今天的学习任务
               </h1>
               <p className="max-w-[520px] text-sm leading-6 text-muted-foreground">
@@ -334,7 +334,7 @@ export function DashboardPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 type="button"
-                className="group rounded-[28px] border border-primary/20 bg-primary p-5 text-left text-primary-foreground shadow-card transition hover:-translate-y-0.5 hover:shadow-lg sm:p-6"
+                className="group overflow-hidden rounded-[1.35rem] border border-primary/25 bg-primary p-5 text-left text-primary-foreground shadow-glow transition duration-300 hover:-translate-y-1 hover:brightness-105 sm:p-6"
                 onClick={() => navigate("/learn")}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -343,7 +343,7 @@ export function DashboardPage() {
                 </div>
                 <strong className="mt-5 block text-6xl font-black leading-none tracking-tight sm:text-7xl">{pendingLearn}</strong>
                 <p className="mt-3 text-base font-semibold">{pendingLearn ? "待学新词" : "新词已清空"}</p>
-                <div className="mt-5 inline-flex items-center gap-2 rounded-full bg-white/14 px-3 py-2 text-sm font-semibold">
+                <div className="mt-5 inline-flex items-center gap-2 rounded-xl bg-white/[0.14] px-3 py-2 text-sm font-semibold">
                   开始学习
                   <ArrowRight className="h-4 w-4" />
                 </div>
@@ -351,7 +351,7 @@ export function DashboardPage() {
 
               <button
                 type="button"
-                className="group rounded-[28px] border border-border/80 bg-panel/85 p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:border-primary/35 hover:shadow-lg sm:p-6"
+                className="group overflow-hidden rounded-[1.35rem] border border-border/80 bg-panel/[0.85] p-5 text-left shadow-card transition duration-300 hover:-translate-y-1 hover:border-primary/[0.35] hover:shadow-lg sm:p-6"
                 onClick={() => (pendingReview ? navigate("/review") : navigate("/stats"))}
               >
                 <div className="flex items-center justify-between gap-3">
@@ -360,7 +360,7 @@ export function DashboardPage() {
                 </div>
                 <strong className="mt-5 block text-6xl font-black leading-none tracking-tight text-foreground sm:text-7xl">{pendingReview}</strong>
                 <p className="mt-3 text-base font-semibold text-foreground">{pendingReview ? "今日需要巩固" : "今日已清空"}</p>
-                <div className="mt-5 inline-flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-2 text-sm font-semibold text-foreground">
+                <div className="mt-5 inline-flex items-center gap-2 rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-sm font-semibold text-foreground">
                   {pendingReview ? "开始复习" : "查看复习计划"}
                   <ArrowRight className="h-4 w-4" />
                 </div>
@@ -370,8 +370,8 @@ export function DashboardPage() {
         </CardContent>
       </Card>
 
-      <section className="grid gap-4 lg:grid-cols-4">
-        <Card className="border-border/70 bg-card/90 shadow-none lg:col-span-2">
+      <section className="grid-flow-dense grid gap-4 lg:grid-cols-4">
+        <Card className="border-white/[0.08] bg-card/[0.88] shadow-none transition duration-300 hover:-translate-y-0.5 hover:border-primary/[0.22] lg:col-span-2">
           <CardContent className="grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
             <div>
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
@@ -392,7 +392,7 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/90 shadow-none">
+        <Card className="border-white/[0.08] bg-card/[0.88] shadow-none transition duration-300 hover:-translate-y-0.5 hover:border-primary/[0.22]">
           <CardContent className="p-5 sm:p-6">
             <p className="text-sm text-muted-foreground">已学词</p>
             <strong className="mt-3 block text-4xl font-semibold">{learnedInDeck}</strong>
@@ -400,7 +400,7 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/90 shadow-none">
+        <Card className="border-white/[0.08] bg-card/[0.88] shadow-none transition duration-300 hover:-translate-y-0.5 hover:border-primary/[0.22]">
           <CardContent className="p-5 sm:p-6">
             <p className="text-sm text-muted-foreground">逾期复习</p>
             <strong className="mt-3 block text-4xl font-semibold">{overdueInDeck}</strong>
@@ -410,7 +410,7 @@ export function DashboardPage() {
       </section>
 
       <section className="grid gap-4 lg:gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="border-white/5 bg-card/90 shadow-none">
+        <Card className="border-white/[0.08] bg-card/[0.88] shadow-none">
           <CardContent className="space-y-5 p-5 sm:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -418,14 +418,14 @@ export function DashboardPage() {
                 <p className="mt-1 text-sm text-muted-foreground">把遗忘提醒、记忆反馈、错词本和趋势合并到一个安静的辅助面板里。</p>
               </div>
               <div className="scrollbar-subtle overflow-x-auto">
-                <div className="flex min-w-max items-center rounded-xl border border-border bg-panel p-1">
+                <div className="flex min-w-max items-center rounded-xl border border-border/80 bg-panel/[0.78] p-1">
                   {assistantTabs.map((tab) => (
                     <button
                       key={tab.id}
                       type="button"
                       onClick={() => setAssistantTab(tab.id)}
                       className={`rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-sm ${
-                        assistantTab === tab.id ? "bg-white text-slate-950" : "text-muted-foreground hover:text-foreground"
+                        assistantTab === tab.id ? "bg-primary text-primary-foreground shadow-glow" : "text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
                       }`}
                     >
                       {tab.label}
@@ -438,7 +438,7 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/5 bg-card/90 shadow-none">
+        <Card className="border-white/[0.08] bg-card/[0.88] shadow-none">
           <CardContent className="space-y-5 p-5 sm:p-6">
             <div className="flex items-start justify-between gap-3">
               <div>

@@ -7,10 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { getStudyTitleStyle } from "@/lib/study-text";
 import { cn } from "@/lib/utils";
 import { getLearningAid, type LearningAid } from "@/services/learning-aid-service";
 import { playPronunciation, warmPronunciationVoices } from "@/services/pronunciation-service";
 import { abandonSpellingSession, getSpellingSessionState, startSpellingSession, submitSpellingAnswer } from "@/services/spelling-service";
+import { getLearnResultScore, hasAnsweredLearnWord } from "@/services/study-service";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useStudyStore } from "@/stores/study-store";
 import type { LearnResult } from "@/types/domain";
@@ -21,20 +23,6 @@ const feedbackOptions: Array<{ value: LearnResult; label: string; hint: string }
   { value: "dontKnow", label: "不认识", hint: "要重学" },
 ];
 const dailyTargetOptions = Array.from({ length: 10 }, (_, index) => (index + 1) * 10);
-
-function getWordTitleSize(value: string, compact = false) {
-  const length = value.replace(/\s+/g, "").length;
-  if (compact) {
-    if (length > 20) return "text-[26px] sm:text-[34px]";
-    if (length > 14) return "text-[30px] sm:text-[40px]";
-    if (length > 9) return "text-[36px] sm:text-[48px]";
-    return "text-[42px] sm:text-[56px]";
-  }
-  if (length > 20) return "text-[30px] sm:text-[40px]";
-  if (length > 14) return "text-[36px] sm:text-[48px]";
-  if (length > 9) return "text-[46px] sm:text-[56px]";
-  return "text-[56px] sm:text-[64px]";
-}
 
 type PronunciationActionBarProps = {
   accent: "uk" | "us";
@@ -252,7 +240,7 @@ export function LearnPage() {
   const progress = queue.length ? Math.round(((currentIndex + 1) / queue.length) * 100) : 0;
   const currentScore = item ? activeSession?.scoreMap?.[item.id] || 0 : 0;
   const nextScore = pendingResult
-    ? Math.min(3, currentScore + (pendingResult === "know" || pendingResult === "vague" ? 1 : 0))
+    ? Math.min(3, currentScore + getLearnResultScore(pendingResult, item && hasAnsweredLearnWord(activeSession, item.id) ? 2 : 1))
     : currentScore;
   const meaningsText = item?.meanings?.length ? item.meanings.join("；") : "暂无释义";
   const primaryMeaning = item?.meanings?.length ? item.meanings.slice(0, pendingResult === "know" ? 2 : 4).join(" / ") : "暂无释义";
@@ -439,7 +427,7 @@ export function LearnPage() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-2rem)] max-w-3xl flex-col overflow-hidden rounded-[28px] border border-border/70 bg-card/88 shadow-card sm:h-[calc(100dvh-2.5rem)] lg:h-auto lg:min-h-[calc(100dvh-8rem)]">
+    <div className="mx-auto flex h-[calc(100dvh-2rem)] max-w-3xl flex-col overflow-hidden rounded-[28px] border border-border/70 bg-card/[0.88] shadow-card sm:h-[calc(100dvh-2.5rem)] lg:h-auto lg:min-h-[calc(100dvh-8rem)]">
       <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto]">
         <header className="border-b border-border/70 bg-card/80 px-3 py-3 backdrop-blur sm:px-5">
           <div className="flex items-center gap-3">
@@ -526,10 +514,8 @@ export function LearnPage() {
 
             <div className={cn("pt-5", detailsVisible ? "pb-3" : "pb-8")}>
               <h2
-                className={cn(
-                  "max-w-full overflow-hidden text-ellipsis whitespace-nowrap font-semibold leading-none tracking-normal",
-                  getWordTitleSize(item.term, detailsVisible),
-                )}
+                className="max-w-full font-semibold tracking-normal"
+                style={getStudyTitleStyle(item.term, { compact: detailsVisible })}
                 title={item.term}
               >
                 {item.term}
@@ -557,7 +543,7 @@ export function LearnPage() {
 
             {!detailsVisible ? (
               <div className="flex flex-1 items-center">
-                <div className="rounded-[24px] border border-dashed border-border/70 bg-panel/35 p-5 text-sm leading-6 text-muted-foreground">
+                <div className="rounded-[24px] border border-dashed border-border/70 bg-panel/[0.35] p-5 text-sm leading-6 text-muted-foreground">
                   先回忆中文含义，再判断掌握程度。答案、例句、搭配、近义词和派生词会在你选择后展开。
                 </div>
               </div>
@@ -581,6 +567,8 @@ export function LearnPage() {
                 <StudyDetailTabs
                   deckId={item.deckId}
                   currentTerm={item.term}
+                  definition={meaningsText}
+                  partOfSpeech={answerPartOfSpeech}
                   collocations={learningAid?.collocations || item.collocations}
                   derivedForms={learningAid?.derivedForms || item.derivedForms || []}
                   synonyms={learningAid?.synonyms || item.synonyms}
@@ -602,7 +590,7 @@ export function LearnPage() {
                 <Button
                   key={option.value}
                   variant="outline"
-                  className="h-11 rounded-2xl border-border/80 bg-panel/55 px-2 text-sm"
+                  className="h-11 rounded-2xl border-border/80 bg-panel/[0.55] px-2 text-sm"
                   onClick={() => chooseFeedback(option.value)}
                 >
                   {option.label}

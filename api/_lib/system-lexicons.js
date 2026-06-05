@@ -26,6 +26,17 @@ const SYSTEM_LEXICONS = [
     scope: "system",
   },
   {
+    id: "system-cet4-translation-phrases",
+    key: "cet4-translation-phrases",
+    slug: "cet4-translation-phrases",
+    name: { en: "CET-4 Translation Phrases", zh: "四级翻译短语词库" },
+    description: {
+      en: "High-frequency CET-4 translation phrases collected from the provided image notes.",
+      zh: "整理自图片资料的大学英语四级翻译常考短语和句型。",
+    },
+    scope: "system",
+  },
+  {
     id: "system-cet6",
     key: "cet6",
     slug: "cet6",
@@ -62,12 +73,70 @@ const SYSTEM_LEXICONS = [
 
 const SYSTEM_ITEMS_PATHS = {
   "system-cet4": path.join(process.cwd(), "backend", "system_lexicon_data", "cet4.json"),
+  "system-cet4-translation-phrases": path.join(
+    process.cwd(),
+    "backend",
+    "system_lexicon_data",
+    "cet4-translation-phrases.json",
+  ),
   "system-cet6": path.join(process.cwd(), "backend", "system_lexicon_data", "cet6.json"),
   "system-daily-life": path.join(process.cwd(), "backend", "system_lexicon_data", "daily-life.json"),
 };
 
 const itemCache = new Map();
 let seedPromise = null;
+
+const CATEGORY_EN = {
+  动作: "Actions",
+  政治: "Politics",
+  经济: "Economy",
+  科技: "Technology",
+  生活: "Life",
+  环保: "Environment",
+  地理: "Geography",
+  文化: "Culture",
+  "经济发展与改革": "Economic Development and Reform",
+  "文化与传统": "Culture and Tradition",
+  "社会与人民生活": "Society and People's Livelihood",
+  "科技与创新": "Technology and Innovation",
+  "环境与生态": "Environment and Ecology",
+  "教育与人才": "Education and Talent",
+  "政治与政策": "Politics and Policy",
+  "旅游与地理": "Tourism and Geography",
+  "健康与医疗": "Health and Medical Care",
+  "行为与趋势": "Actions and Trends",
+};
+
+function normalizeSystemItems(parsed, lexiconId) {
+  if (Array.isArray(parsed)) return parsed;
+
+  const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
+  const lexiconKey = parsed?.key || lexiconId.replace(/^system-/, "");
+  const prefix = parsed?.id || lexiconId;
+
+  return entries.map((entry, index) => {
+    const [text, zh, categoryZh] = entry;
+    const normalizedCategoryZh = String(categoryZh || "四级翻译").trim();
+
+    return {
+      id: `${prefix}-${String(index + 1).padStart(4, "0")}`,
+      text: String(text || "").trim(),
+      kind: "phrase",
+      pos: "phrase",
+      category: {
+        en: CATEGORY_EN[normalizedCategoryZh] || "CET-4 Translation",
+        zh: normalizedCategoryZh,
+      },
+      difficulty: { en: "CET-4 translation", zh: "四级翻译" },
+      meaning: {
+        en: String(text || "").trim(),
+        zh: String(zh || "").trim(),
+      },
+      lexiconId,
+      lexiconKey,
+    };
+  });
+}
 
 function readItemsFromFile(id) {
   if (itemCache.has(id)) return itemCache.get(id);
@@ -78,7 +147,7 @@ function readItemsFromFile(id) {
   }
 
   const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-  const items = Array.isArray(parsed) ? parsed : [];
+  const items = normalizeSystemItems(parsed, id);
   itemCache.set(id, items);
   return items;
 }
@@ -196,6 +265,7 @@ async function getLexiconItems(id) {
 }
 
 module.exports = {
+  normalizeSystemItems,
   ensureSystemLexiconsSeeded,
   getLexicons,
   getLexicon,

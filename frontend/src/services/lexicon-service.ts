@@ -17,6 +17,13 @@ export async function getLexiconItems(
   lexiconId: string,
 ): Promise<{ lexicon: BackendLexiconDto; items: BackendLexiconItemDto[] }> {
   const response = await fetch(apiUrl(`/lexicons/items?lexiconId=${encodeURIComponent(lexiconId)}`));
+  if (response.status === 404) {
+    const fallbackResponse = await fetch(apiUrl(`/lexicons/${encodeURIComponent(lexiconId)}/items`));
+    if (!fallbackResponse.ok) {
+      throw new Error("Failed to fetch lexicon items");
+    }
+    return fallbackResponse.json();
+  }
   if (!response.ok) {
     throw new Error("Failed to fetch lexicon items");
   }

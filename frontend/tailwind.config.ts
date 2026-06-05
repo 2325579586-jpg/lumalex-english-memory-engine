@@ -43,11 +43,11 @@ const config: Config = {
         glow: "var(--shadow-glow)",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ["Outfit", "PingFang SC", "Microsoft YaHei", "ui-sans-serif", "system-ui", "sans-serif"],
       },
       backgroundImage: {
         "hero-grid":
-          "radial-gradient(circle at top left, rgba(124,140,255,0.16), transparent 30%), radial-gradient(circle at top right, rgba(245,158,97,0.18), transparent 24%)",
+          "radial-gradient(circle at top left, rgba(108,164,136,0.18), transparent 30%), radial-gradient(circle at top right, rgba(211,156,92,0.16), transparent 24%)",
       },
     },
   },

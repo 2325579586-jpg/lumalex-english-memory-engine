@@ -54,10 +54,14 @@ function closeStoredSession(session: ActiveReviewSession, closedAt = Date.now())
   });
 }
 
-function getReviewResultScore(result: ReviewResult) {
-  if (result === "remembered") return 1;
+export function getReviewResultScore(result: ReviewResult, round = 1) {
+  if (result === "remembered") return round <= 1 ? REVIEW_MASTERY_SCORE : 1;
   if (result === "hesitant") return 1;
   return 0;
+}
+
+export function hasAnsweredReviewWord(session: Pick<ActiveReviewSession, "resultMap"> | null | undefined, wordId: string) {
+  return Boolean(session?.resultMap && Object.prototype.hasOwnProperty.call(session.resultMap, wordId));
 }
 
 function isReviewDue(word: WordItem, now: number) {
@@ -167,7 +171,8 @@ export async function submitReviewFeedback(result: ReviewResult) {
   const responseTimeMs = Math.max(1000, now - snapshot.questionStartedAt);
   const currentMode = snapshot.modeSequence[snapshot.modeIndex] || "en_to_zh";
   const previousScore = snapshot.scoreMap?.[word.id] || 0;
-  const nextScore = Math.min(REVIEW_MASTERY_SCORE, previousScore + getReviewResultScore(result));
+  const attemptRound = hasAnsweredReviewWord(snapshot, word.id) ? 2 : 1;
+  const nextScore = Math.min(REVIEW_MASTERY_SCORE, previousScore + getReviewResultScore(result, attemptRound));
   const nextScoreMap = { ...(snapshot.scoreMap || {}), [word.id]: nextScore };
   const mastered = nextScore >= REVIEW_MASTERY_SCORE;
   const scheduled = mastered

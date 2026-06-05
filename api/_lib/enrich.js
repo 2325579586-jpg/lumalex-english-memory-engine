@@ -10,6 +10,36 @@ function containsCjk(value) {
   return /[\u4e00-\u9fff]/.test(String(value || ""));
 }
 
+function isGenericFallbackMeaning(value, text) {
+  const clean = String(value || "").trim();
+  const normalized = normalizeText(clean);
+  const normalizedText = normalizeText(text);
+  return (
+    !clean ||
+    normalized.includes("常用英语词汇") ||
+    normalized.includes("常用英语短语") ||
+    normalized.includes("相关的常用") ||
+    normalized.includes("建议稍后") ||
+    normalized === normalizeText(buildFallbackMeaning(text, detectKind(text))) ||
+    (normalizedText && normalized === normalizeText(`与 ${text} 相关的常用英语词汇含义。`))
+  );
+}
+
+function isGenericFallbackExample(value, text) {
+  const clean = String(value || "").trim();
+  const normalized = normalizeText(clean).replace(/[.。]/g, "");
+  const normalizedText = normalizeText(text);
+  return (
+    !clean ||
+    normalized === normalizeText(buildFallbackExample(text)).replace(/[.。]/g, "") ||
+    (normalizedText &&
+      normalized.includes(`remember ${normalizedText} more easily`) &&
+      normalized.includes("real sentence")) ||
+    normalized.includes("try to use") ||
+    normalized.includes("in a sentence you might actually say")
+  );
+}
+
 function buildFallbackMeaning(text, kind) {
   return kind === "phrase" ? `与 ${text} 相关的常用英语短语表达。` : `与 ${text} 相关的常用英语词汇含义。`;
 }
@@ -166,8 +196,13 @@ async function generateWithQwen(text, kind) {
   const raw = content?.choices?.[0]?.message?.content || "{}";
   const parsed = JSON.parse(raw);
   const meaning = String(parsed.meaning || "").trim();
-  if (!containsCjk(meaning)) {
+  const exampleEn = String(parsed.exampleEn || "").trim();
+  const exampleZh = String(parsed.exampleZh || "").trim();
+  if (!containsCjk(meaning) || isGenericFallbackMeaning(meaning, text)) {
     throw new Error("AI did not return a valid Simplified Chinese meaning.");
+  }
+  if (isGenericFallbackExample(exampleEn, text) || !containsCjk(exampleZh)) {
+    throw new Error("AI did not return a useful example sentence.");
   }
 
   const dictionaryEntry = kind === "word" ? await fetchDictionaryPayload(text).catch(() => null) : null;
@@ -177,8 +212,8 @@ async function generateWithQwen(text, kind) {
     phonetic: parsed.phonetic || "",
     pos: parsed.pos || (kind === "phrase" ? "phrase" : "n."),
     meaning,
-    exampleEn: parsed.exampleEn || buildFallbackExample(text),
-    exampleZh: parsed.exampleZh || buildFallbackExampleZh(text),
+    exampleEn,
+    exampleZh,
     mnemonicEn: parsed.mnemonicEn || `Connect "${text}" with a concrete scene.`,
     mnemonicZh: parsed.mnemonicZh || buildFallbackMnemonic(text, meaning),
     wordForms: normalizeWordForms(parsed.wordForms, [text]),
@@ -192,30 +227,9 @@ async function generateWithQwen(text, kind) {
 async function enrichWord(text, kind) {
   try {
     return await generateWithQwen(text, kind);
-  } catch {
-    if (kind === "word") {
-      const dictionaryEntry = await fetchDictionaryPayload(text).catch(() => null);
-      if (dictionaryEntry) {
-        return {
-          ...fallbackEnrichment(text),
-          phonetic:
-            dictionaryEntry.phonetic ||
-            (Array.isArray(dictionaryEntry.phonetics)
-              ? dictionaryEntry.phonetics.find((item) => item?.text)?.text || ""
-              : ""),
-          pos:
-            (Array.isArray(dictionaryEntry.meanings) && dictionaryEntry.meanings[0]?.partOfSpeech
-              ? dictionaryEntry.meanings[0].partOfSpeech
-              : "n."),
-          synonyms: extractDictionaryRelated(dictionaryEntry, "synonyms"),
-          antonyms: extractDictionaryRelated(dictionaryEntry, "antonyms"),
-          wordForms: [],
-          audioUrl: extractAudioUrl(dictionaryEntry),
-          provider: "dictionaryapi",
-        };
-      }
-    }
-    return fallbackEnrichment(text);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "unknown error";
+    throw new Error(`AI auto-enrich failed: ${detail}`);
   }
 }
 

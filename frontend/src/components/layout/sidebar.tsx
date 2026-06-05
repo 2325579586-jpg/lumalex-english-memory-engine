@@ -40,9 +40,9 @@ const mobileItems = [
 export function Sidebar() {
   return (
     <>
-      <aside className="hidden h-screen w-[252px] shrink-0 flex-col border-r border-border/80 bg-card/95 px-5 py-6 lg:flex">
+      <aside className="hidden h-screen w-[264px] shrink-0 flex-col border-r border-white/[0.08] bg-card/[0.82] px-5 py-6 shadow-[18px_0_60px_rgba(0,0,0,0.18)] backdrop-blur-2xl lg:flex">
         <div className="mb-8 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-sm font-semibold text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-[1.1rem] bg-primary text-sm font-bold text-primary-foreground shadow-glow">
             LL
           </div>
           <div>
@@ -62,8 +62,8 @@ export function Sidebar() {
                     to={item.to}
                     className={({ isActive }) =>
                       cn(
-                        "group relative flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-muted transition-all hover:bg-white/5 hover:text-foreground",
-                        isActive && "bg-white/[0.04] text-foreground shadow-[inset_0_0_0_1px_rgba(94,106,210,0.22)]",
+                        "group relative flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-muted transition-all duration-200 hover:-translate-y-0.5 hover:bg-white/[0.055] hover:text-foreground",
+                        isActive && "bg-white/[0.07] text-foreground shadow-[inset_0_0_0_1px_rgb(var(--color-primary)/0.28)]",
                       )
                     }
                   >
@@ -86,7 +86,7 @@ export function Sidebar() {
           ))}
         </div>
 
-        <Card className="mt-6 border-border/80 bg-panel/90 shadow-none">
+        <Card className="mt-6 border-white/[0.08] bg-panel/[0.72] shadow-none">
           <CardContent className="space-y-4 p-5">
             <div className="flex items-center justify-between">
               <div>
@@ -96,15 +96,15 @@ export function Sidebar() {
               <BrainCircuit className="h-5 w-5 text-primary" />
             </div>
             <div className="grid grid-cols-3 gap-3 text-sm">
-              <div className="rounded-xl bg-white/[0.04] p-3">
+              <div className="rounded-xl bg-white/[0.055] p-3">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-muted">新学</p>
                 <strong className="mt-2 block text-xl">18</strong>
               </div>
-              <div className="rounded-xl bg-white/[0.04] p-3">
+              <div className="rounded-xl bg-white/[0.055] p-3">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-muted">复习</p>
                 <strong className="mt-2 block text-xl">26</strong>
               </div>
-              <div className="rounded-xl bg-white/[0.04] p-3">
+              <div className="rounded-xl bg-white/[0.055] p-3">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-muted">时长</p>
                 <strong className="mt-2 block text-base">{formatMinutes(42)}</strong>
               </div>
@@ -113,16 +113,18 @@ export function Sidebar() {
         </Card>
       </aside>
 
-      <nav className="mobile-app-nav fixed inset-x-0 bottom-0 z-30 border-t border-border/80 bg-card/95 px-2 py-2 backdrop-blur-xl lg:hidden">
-        <div className="mx-auto grid max-w-md grid-cols-6 gap-1">
+      <nav className="mobile-app-nav pointer-events-none fixed inset-x-0 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 flex justify-center px-3 lg:hidden">
+        <div className="pointer-events-auto inline-grid max-w-[calc(100vw-1.5rem)] auto-cols-max grid-flow-col gap-1.5 overflow-x-auto rounded-[1.75rem] border border-white/[0.2] bg-card/[0.42] px-2.5 py-2.5 shadow-[0_18px_55px_rgba(0,0,0,0.3),inset_0_1px_0_rgba(255,255,255,0.18)] ring-1 ring-white/[0.1] backdrop-blur-2xl [scrollbar-width:none] supports-[backdrop-filter]:bg-card/[0.34] [&::-webkit-scrollbar]:hidden">
           {mobileItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={({ isActive }) =>
                 cn(
-                  "flex min-w-0 flex-col items-center gap-1 rounded-xl px-1.5 py-2 text-[11px] font-medium text-muted transition-all",
-                  isActive ? "bg-white text-slate-950" : "hover:bg-white/5 hover:text-foreground",
+                  "flex min-w-[52px] flex-col items-center gap-1.5 rounded-[1.2rem] px-3 py-2.5 text-[11px] font-semibold text-muted-foreground transition-all duration-200 active:scale-95",
+                  isActive
+                    ? "bg-white/[0.88] text-slate-950 shadow-[0_10px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.72)]"
+                    : "hover:bg-white/[0.11] hover:text-foreground",
                 )
               }
             >

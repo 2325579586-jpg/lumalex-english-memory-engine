@@ -65,10 +65,33 @@ function isStillLearnable(word: WordItem) {
   return word.status === "unseen" || word.status === "learning";
 }
 
-function getLearnResultScore(result: LearnResult) {
-  if (result === "know") return 1;
+export function getLearnResultScore(result: LearnResult, round = 1) {
+  if (result === "know") return round <= 1 ? LEARN_MASTERY_SCORE : 1;
   if (result === "vague") return 1;
   return 0;
+}
+
+export function hasAnsweredLearnWord(session: Pick<ActiveLearnSession, "feedbackMap"> | null | undefined, wordId: string) {
+  return Boolean(session?.feedbackMap && Object.prototype.hasOwnProperty.call(session.feedbackMap, wordId));
+}
+
+function getLearnQueuePriority(word: WordItem) {
+  if (word.status === "learning") return 0;
+  if (word.learnCount > 0) return 1;
+  return 2;
+}
+
+function getLearnQueueSortTime(word: WordItem) {
+  return word.lastStudiedAt || word.createdAt;
+}
+
+function shuffleSessionQueue<T>(items: T[]) {
+  const next = [...items];
+  for (let index = next.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [next[index], next[swapIndex]] = [next[swapIndex], next[index]];
+  }
+  return next;
 }
 
 export async function getTodayLearnQueue(options: StartLearnOptions = {}) {
@@ -79,7 +102,11 @@ export async function getTodayLearnQueue(options: StartLearnOptions = {}) {
   });
   return words
     .filter((word) => word.status === "unseen" || word.status === "learning")
-    .sort((a, b) => a.createdAt - b.createdAt)
+    .sort((a, b) => {
+      const priorityDiff = getLearnQueuePriority(a) - getLearnQueuePriority(b);
+      if (priorityDiff !== 0) return priorityDiff;
+      return getLearnQueueSortTime(a) - getLearnQueueSortTime(b);
+    })
     .slice(0, target);
 }
 
@@ -141,6 +168,7 @@ export async function startLearnSession(options: StartLearnOptions = {}) {
   if (!queue.length) {
     return null;
   }
+  queue = shuffleSessionQueue(queue);
 
   const startedAt = Date.now();
   const sessionId = `learn-session-${crypto.randomUUID()}`;
@@ -198,7 +226,8 @@ export async function submitLearnFeedback(result: LearnResult) {
   const now = Date.now();
   const dwellTimeMs = Math.max(1000, now - snapshot.dwellStartedAt);
   const previousScore = snapshot.scoreMap?.[word.id] || 0;
-  const nextScore = Math.min(LEARN_MASTERY_SCORE, previousScore + getLearnResultScore(result));
+  const attemptRound = hasAnsweredLearnWord(snapshot, word.id) ? 2 : 1;
+  const nextScore = Math.min(LEARN_MASTERY_SCORE, previousScore + getLearnResultScore(result, attemptRound));
   const nextScoreMap = { ...(snapshot.scoreMap || {}), [word.id]: nextScore };
   const mastered = nextScore >= LEARN_MASTERY_SCORE;
   const scheduled = mastered

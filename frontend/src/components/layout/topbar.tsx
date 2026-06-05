@@ -175,7 +175,7 @@ export function Topbar() {
   }
 
   return (
-    <header className="sticky top-0 z-20 hidden border-b border-border/80 bg-card/92 px-4 py-3 backdrop-blur-xl sm:px-5 lg:block lg:px-8 lg:py-4">
+    <header className="sticky top-0 z-20 hidden border-b border-white/[0.08] bg-card/[0.78] px-4 py-3 shadow-[0_18px_50px_rgba(0,0,0,0.14)] backdrop-blur-2xl sm:px-5 lg:block lg:px-8 lg:py-4">
       <div className="flex flex-col gap-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
@@ -192,7 +192,7 @@ export function Topbar() {
 
           {!isStudyRoute && (
             <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-              <div className="flex items-center rounded-xl border border-border bg-panel p-1">
+              <div className="flex items-center rounded-xl border border-border/80 bg-panel/[0.78] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
                 {[
                   { id: "focus", label: "沉浸" },
                   { id: "full", label: "完整" },
@@ -202,8 +202,8 @@ export function Topbar() {
                     type="button"
                     onClick={() => setMode(item.id as "focus" | "full")}
                     className={cn(
-                      "rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-sm",
-                      mode === item.id ? "bg-white text-slate-950" : "text-muted hover:text-foreground",
+                      "rounded-lg px-3 py-2 text-xs font-semibold transition-all sm:px-4 sm:text-sm",
+                      mode === item.id ? "bg-primary text-primary-foreground shadow-glow" : "text-muted hover:bg-white/[0.05] hover:text-foreground",
                     )}
                   >
                     {item.label}
@@ -214,7 +214,7 @@ export function Topbar() {
               <button
                 type="button"
                 onClick={toggleLanguage}
-                className="rounded-lg border border-border bg-panel px-3 py-2 text-xs font-medium text-muted transition-all hover:text-foreground sm:text-sm"
+                className="rounded-lg border border-border/80 bg-panel/[0.78] px-3 py-2 text-xs font-semibold text-muted transition-all hover:border-primary/[0.45] hover:text-foreground sm:text-sm"
               >
                 {language === "zh" ? "中文 / EN" : "EN / 中文"}
               </button>
@@ -229,7 +229,7 @@ export function Topbar() {
 
         {isStudyRoute ? (
           <div className="flex items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-panel px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border/80 bg-panel/[0.78] px-3 py-2">
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                 <User2 className="h-4 w-4" />
               </div>
@@ -243,7 +243,7 @@ export function Topbar() {
             <button
               type="button"
               onClick={logout}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-panel text-muted-foreground transition-colors hover:text-foreground"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-panel/[0.78] text-muted-foreground transition-colors hover:border-primary/[0.45] hover:text-foreground"
               title="退出登录"
             >
               <LogOut className="h-4 w-4" />
@@ -258,12 +258,12 @@ export function Topbar() {
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder="搜索单词、短语、标签、例句"
-                  className="rounded-lg border-border bg-panel pl-10"
+                  className="rounded-xl border-border/80 bg-panel/[0.78] pl-10"
                 />
               </form>
 
               {searchState.status !== "idle" && (
-                <div className="absolute left-0 top-[52px] z-50 w-full overflow-hidden rounded-3xl border border-border/80 bg-card/98 shadow-card backdrop-blur-xl">
+                <div className="absolute left-0 top-[52px] z-50 w-full overflow-hidden rounded-[1.35rem] border border-white/10 bg-card/95 shadow-soft backdrop-blur-2xl">
                   <div className="flex items-center justify-between gap-3 border-b border-border/70 px-4 py-3">
                     <div className="min-w-0">
                       <p className="text-xs uppercase tracking-[0.18em] text-muted">全局查词</p>
@@ -295,7 +295,7 @@ export function Topbar() {
                         {searchState.matches.map((word) => {
                           const deck = decks.find((item) => item.id === word.deckId);
                           return (
-                            <div key={word.id} className="rounded-2xl border border-border/70 bg-panel/70 p-4">
+                            <div key={word.id} className="rounded-2xl border border-border/70 bg-panel/[0.72] p-4 transition hover:border-primary/[0.35]">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <h3 className="truncate text-xl font-semibold">{word.term}</h3>
@@ -322,7 +322,7 @@ export function Topbar() {
 
                   {searchState.status === "dictionary" && (
                     <div className="p-3">
-                      <div className="rounded-2xl border border-border/70 bg-panel/70 p-4">
+                      <div className="rounded-2xl border border-border/70 bg-panel/[0.72] p-4">
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <h3 className="truncate text-2xl font-semibold">{searchState.entry.word}</h3>
@@ -398,13 +398,13 @@ export function Topbar() {
               <button
                 type="button"
                 onClick={() => navigate("/settings")}
-                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border bg-panel px-3 text-sm text-muted-foreground transition-colors hover:text-foreground sm:hidden"
+                className="inline-flex h-10 items-center gap-2 rounded-xl border border-border/80 bg-panel/[0.78] px-3 text-sm text-muted-foreground transition-colors hover:border-primary/[0.45] hover:text-foreground sm:hidden"
               >
                 <Settings2 className="h-4 w-4" />
                 设置
               </button>
 
-              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border bg-panel px-3 py-2 sm:px-4">
+              <div className="flex min-w-0 items-center gap-2 rounded-xl border border-border/80 bg-panel/[0.78] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:px-4">
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary sm:h-9 sm:w-9">
                   <User2 className="h-4 w-4" />
                 </div>
@@ -418,14 +418,14 @@ export function Topbar() {
                 <button
                   type="button"
                   onClick={logout}
-                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-white/5 hover:text-foreground"
+                  className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
                   title="退出登录"
                 >
                   <LogOut className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="hidden h-10 min-w-[64px] items-center justify-center rounded-full border border-primary/20 bg-primary/10 px-3 text-sm font-semibold text-primary sm:flex">
+              <div className="hidden h-10 min-w-[64px] items-center justify-center rounded-xl border border-primary/25 bg-primary/[0.12] px-3 text-sm font-bold text-primary sm:flex">
                 72%
               </div>
             </div>

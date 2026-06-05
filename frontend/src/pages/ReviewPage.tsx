@@ -8,8 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { reviewModes } from "@/data/mock-data";
+import { focusNativeSpellingInput, nativeSpellingInputProps } from "@/lib/native-spelling-input";
+import { getSpellingMeaningText, getStudyTitleStyle, normalizeSpellingAnswer } from "@/lib/study-text";
 import { cn } from "@/lib/utils";
 import { playPronunciation, warmPronunciationVoices } from "@/services/pronunciation-service";
+import { getReviewResultScore, hasAnsweredReviewWord } from "@/services/review-service";
 import { readStorage } from "@/services/storage";
 import { useReviewStore } from "@/stores/review-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -39,22 +42,6 @@ const reviewModeLabel: Record<ReviewMode, string> = {
   cloze: "例句填空",
 };
 
-function getPromptTitleSize(value: string, compact = false) {
-  const isLatin = /^[A-Za-z][A-Za-z\s'-]*$/.test(value.trim());
-  if (!isLatin) return compact ? "text-2xl sm:text-4xl" : "text-3xl sm:text-5xl";
-  const length = value.replace(/\s+/g, "").length;
-  if (compact) {
-    if (length > 20) return "text-[26px] sm:text-[34px]";
-    if (length > 14) return "text-[30px] sm:text-[40px]";
-    if (length > 9) return "text-[36px] sm:text-[48px]";
-    return "text-[42px] sm:text-[56px]";
-  }
-  if (length > 20) return "text-[30px] sm:text-[40px]";
-  if (length > 14) return "text-[36px] sm:text-[48px]";
-  if (length > 9) return "text-[46px] sm:text-[56px]";
-  return "text-[56px] sm:text-[64px]";
-}
-
 type SpellingStage =
   | "idle"
   | "correct"
@@ -62,10 +49,6 @@ type SpellingStage =
   | "retry_after_hint"
   | "retry_correct_no_score"
   | "retry_wrong";
-
-function normalizeAnswer(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -128,7 +111,7 @@ export function ReviewPage() {
     setPendingResult(result);
     reveal();
     if (settings.autoPlayPronunciation && item) {
-      void playPronunciation(item, accent);
+      void playPronunciation(item, accent).catch(() => undefined);
     }
   };
 
@@ -166,8 +149,13 @@ export function ReviewPage() {
   }, [activeMode, item?.id, activeSession?.round, hide]);
 
   useEffect(() => {
+    if (!activeSession || !item || !isObjectiveMode || revealed || answerChecked) return;
+    window.setTimeout(() => focusNativeSpellingInput(spellingInputRef.current), 0);
+  }, [activeSession, answerChecked, activeMode, isObjectiveMode, item?.id, revealed]);
+
+  useEffect(() => {
     if (activeMode !== "audio" || !item || revealed) return;
-    void playPronunciation(item, accent);
+    void playPronunciation(item, accent).catch(() => undefined);
   }, [accent, activeMode, item?.id, revealed]);
 
   useEffect(() => {
@@ -302,11 +290,12 @@ export function ReviewPage() {
   }
 
   const meaningsText = item.meanings.join("；") || "暂无释义";
+  const spellingMeaningText = getSpellingMeaningText(item);
   const answerPartOfSpeech = item.partOfSpeech || item.type || "";
   const clozeText = buildClozeExample(item.example || "", item.term);
   const prompt =
     activeMode === "zh_to_en" || activeMode === "spelling"
-      ? meaningsText
+      ? spellingMeaningText
       : activeMode === "audio"
         ? "听发音，回忆含义"
         : activeMode === "cloze"
@@ -314,11 +303,11 @@ export function ReviewPage() {
           : item.term;
   const currentScore = activeSession?.scoreMap?.[item.id] || 0;
   const nextScore = pendingResult
-    ? Math.min(3, currentScore + (pendingResult === "remembered" || pendingResult === "hesitant" ? 1 : 0))
+    ? Math.min(3, currentScore + getReviewResultScore(pendingResult, hasAnsweredReviewWord(activeSession, item.id) ? 2 : 1))
     : currentScore;
   const progress = queue.length ? Math.round(((currentIndex + 1) / queue.length) * 100) : 0;
   const activeModeLabel = reviewModeLabel[activeMode];
-  const typedCorrect = normalizeAnswer(typedAnswer) === normalizeAnswer(item.term);
+  const typedCorrect = normalizeSpellingAnswer(typedAnswer) === normalizeSpellingAnswer(item.term);
   const selectedFeedback = reviewOptions.find((option) => option.value === pendingResult);
   const spellingCanCommit = isSpellingMode && (spellingStage === "correct" || spellingStage === "retry_correct_no_score");
   const promptHint =
@@ -349,7 +338,7 @@ export function ReviewPage() {
   };
 
   function checkTypedAnswer() {
-    const normalizedCorrect = normalizeAnswer(typedAnswer) === normalizeAnswer(item.term);
+    const normalizedCorrect = normalizeSpellingAnswer(typedAnswer) === normalizeSpellingAnswer(item.term);
     if (isSpellingMode) {
       const cleanAnswer = typedAnswer.trim();
       setSubmittedAnswer(cleanAnswer || "未输入");
@@ -359,6 +348,7 @@ export function ReviewPage() {
       if (!cleanAnswer) {
         setPendingResult(null);
         setSpellingStage("wrong_show_answer");
+        void playPronunciation(item, accent).catch(() => undefined);
         return;
       }
 
@@ -371,7 +361,10 @@ export function ReviewPage() {
           setSpellingStage("retry_wrong");
         }
         if (settings.autoPlayPronunciation && normalizedCorrect) {
-          void playPronunciation(item, accent);
+          void playPronunciation(item, accent).catch(() => undefined);
+        }
+        if (!normalizedCorrect) {
+          void playPronunciation(item, accent).catch(() => undefined);
         }
         return;
       }
@@ -380,13 +373,14 @@ export function ReviewPage() {
         setPendingResult("remembered");
         setSpellingStage("correct");
         if (settings.autoPlayPronunciation) {
-          void playPronunciation(item, accent);
+          void playPronunciation(item, accent).catch(() => undefined);
         }
         return;
       }
 
       setPendingResult(null);
       setSpellingStage("wrong_show_answer");
+      void playPronunciation(item, accent).catch(() => undefined);
       return;
     }
     if (!typedAnswer.trim()) return;
@@ -394,7 +388,7 @@ export function ReviewPage() {
     setPendingResult(normalizedCorrect ? "remembered" : "forgot");
     reveal();
     if (settings.autoPlayPronunciation && normalizedCorrect) {
-      void playPronunciation(item, accent);
+      void playPronunciation(item, accent).catch(() => undefined);
     }
   }
 
@@ -405,7 +399,7 @@ export function ReviewPage() {
     setPendingResult(null);
     setSpellingStage("retry_after_hint");
     hide();
-    window.setTimeout(() => spellingInputRef.current?.focus(), 0);
+    window.setTimeout(() => focusNativeSpellingInput(spellingInputRef.current), 0);
   }
 
   const spellingPrimaryLabel =
@@ -450,7 +444,7 @@ export function ReviewPage() {
     (spellingStage === "retry_correct_no_score" && !pendingResult);
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-2rem)] max-w-3xl flex-col overflow-hidden rounded-[28px] border border-border/70 bg-card/88 shadow-card sm:h-[calc(100dvh-2.5rem)] lg:h-auto lg:min-h-[calc(100dvh-8rem)]">
+    <div className="mx-auto flex h-[calc(100dvh-2rem)] max-w-3xl flex-col overflow-hidden rounded-[28px] border border-border/70 bg-card/[0.88] shadow-card sm:h-[calc(100dvh-2.5rem)] lg:h-auto lg:min-h-[calc(100dvh-8rem)]">
       <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto]">
         <header className="border-b border-border/70 bg-card/80 px-3 py-3 backdrop-blur sm:px-5">
           <div className="flex items-center gap-3">
@@ -487,10 +481,10 @@ export function ReviewPage() {
             <div className={cn("pt-5", revealed ? "pb-3" : "pb-8")}>
               <h2
                 className={cn(
-                  "max-w-full overflow-hidden text-ellipsis font-semibold leading-tight tracking-normal",
+                  "max-w-full font-semibold tracking-normal",
                   activeMode === "cloze" ? "whitespace-normal text-2xl sm:text-3xl" : "whitespace-nowrap",
-                  activeMode === "cloze" ? "" : getPromptTitleSize(prompt, revealed),
                 )}
+                style={activeMode === "cloze" ? undefined : getStudyTitleStyle(prompt, { compact: revealed })}
                 title={prompt}
               >
                 {prompt}
@@ -526,7 +520,7 @@ export function ReviewPage() {
 
             {!revealed ? (
               <div className="flex flex-1 items-center">
-                <div className="w-full rounded-[24px] border border-dashed border-border/70 bg-panel/35 p-5 text-sm leading-6 text-muted-foreground">
+                <div className="w-full rounded-[24px] border border-dashed border-border/70 bg-panel/[0.35] p-5 text-sm leading-6 text-muted-foreground">
                   {promptHint}
                   {!isObjectiveMode ? <p className="mt-2">先在心里作答，再用底部按钮判断掌握程度。</p> : null}
                 </div>
@@ -541,7 +535,11 @@ export function ReviewPage() {
                       <Badge variant="muted">{nextScore}/3 分</Badge>
                     </div>
                   </div>
-                  <p className="mt-3 max-w-full overflow-hidden text-ellipsis whitespace-nowrap text-2xl font-semibold tracking-normal" title={item.term}>
+                  <p
+                    className="mt-3 max-w-full font-semibold tracking-normal"
+                    style={getStudyTitleStyle(item.term, { compact: true })}
+                    title={item.term}
+                  >
                     {item.term}
                   </p>
                   <p className="mt-2 text-base leading-7">
@@ -556,6 +554,8 @@ export function ReviewPage() {
                 <StudyDetailTabs
                   deckId={item.deckId}
                   currentTerm={item.term}
+                  definition={meaningsText}
+                  partOfSpeech={answerPartOfSpeech}
                   collocations={item.collocations}
                   derivedForms={item.derivedForms || []}
                   synonyms={item.synonyms}
@@ -570,6 +570,7 @@ export function ReviewPage() {
             {isObjectiveMode ? (
               <div className="mt-4 w-full space-y-3">
                 <Input
+                  {...nativeSpellingInputProps}
                   ref={spellingInputRef}
                   key={`${item.id}:${activeSession?.round || 1}:${activeMode}`}
                   value={typedAnswer}
@@ -648,7 +649,7 @@ export function ReviewPage() {
                 <Button
                   key={option.value}
                   variant="outline"
-                  className="h-11 rounded-2xl border-border/80 bg-panel/55 px-2 text-sm"
+                  className="h-11 rounded-2xl border-border/80 bg-panel/[0.55] px-2 text-sm"
                   disabled={committing}
                   onClick={() => submitFeedback(option.value).catch(() => undefined)}
                 >

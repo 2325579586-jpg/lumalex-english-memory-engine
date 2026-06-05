@@ -11,8 +11,9 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Badge } from "@/components/ui/badge";
+import { AiWordRelationsSection } from "@/components/shared/ai-word-relations-section";
 import { WordRelationsPanel } from "@/components/shared/word-relations-panel";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,7 @@ import { learnRecordRepository } from "@/repositories/learn-record-repository";
 import { reviewRecordRepository } from "@/repositories/review-record-repository";
 import { wordRepository } from "@/repositories/word-repository";
 import { syncSystemLexicons } from "@/services/system-lexicon-sync";
+import { useSettingsStore } from "@/stores/settings-store";
 import type { Deck, LibraryFilters, WordItem, WordStatus } from "@/types/domain";
 
 const PAGE_SIZE = 20;
@@ -84,8 +86,11 @@ async function syncDeckCounts(deckIds: string[]) {
 
 export function LibraryPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const preferredAccent = useSettingsStore((state) => state.settings.preferredAccent);
   const { deckId } = useParams<{ deckId?: string }>();
   const isDeckDetail = Boolean(deckId);
+  const routeWordQuery = useMemo(() => new URLSearchParams(location.search).get("word")?.trim() || "", [location.search]);
 
   const [view, setView] = useState<"table" | "card">("table");
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -188,10 +193,22 @@ export function LibraryPage() {
   }, [deckId, filters]);
 
   useEffect(() => {
+    if (!routeWordQuery) return;
+    setFilters((current) => (current.query === routeWordQuery ? current : { ...current, query: routeWordQuery }));
+  }, [routeWordQuery]);
+
+  useEffect(() => {
     setPage(1);
     setSelectedIds([]);
     setSelectedWord(null);
   }, [deckId, filters.query, filters.status, filters.tag]);
+
+  useEffect(() => {
+    if (!routeWordQuery) return;
+    const normalized = routeWordQuery.toLowerCase();
+    const match = [...words, ...overviewWords].find((item) => item.normalizedTerm === normalized || item.term.toLowerCase() === normalized);
+    if (match) setSelectedWord(match);
+  }, [overviewWords, routeWordQuery, words]);
 
   useEffect(() => {
     const handleCloudSync = () => {
@@ -888,6 +905,14 @@ export function LibraryPage() {
                   synonyms={selectedWord.synonyms}
                   antonyms={selectedWord.antonyms}
                 />
+                <div className="mt-3">
+                  <AiWordRelationsSection
+                    word={selectedWord.term}
+                    definition={selectedWord.meanings.join("；")}
+                    partOfSpeech={selectedWord.partOfSpeech || selectedWord.type}
+                    preferredAccent={preferredAccent}
+                  />
+                </div>
               </div>
             </div>
 

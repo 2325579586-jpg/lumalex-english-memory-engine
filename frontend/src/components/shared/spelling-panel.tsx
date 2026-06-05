@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { focusNativeSpellingInput, nativeSpellingInputProps } from "@/lib/native-spelling-input";
+import { getSpellingMeaningText } from "@/lib/study-text";
 import { playPronunciation } from "@/services/pronunciation-service";
 import type { WordItem } from "@/types/domain";
 
@@ -35,14 +37,19 @@ export function SpellingPanel({
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<SpellingStage>("idle");
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const meaningHintText = getSpellingMeaningText(word);
 
   useEffect(() => {
     setAnswer("");
     setSubmittedAnswer("");
     setMessage("");
     setStage("idle");
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+    window.setTimeout(() => focusNativeSpellingInput(inputRef.current), 0);
   }, [word.id, currentIndex]);
+
+  const playCurrentWord = () => {
+    void playPronunciation(word, accent).catch(() => undefined);
+  };
 
   const handleSubmit = async () => {
     if (stage === "wrong_show_answer") {
@@ -50,7 +57,7 @@ export function SpellingPanel({
       setSubmittedAnswer("");
       setMessage("请重新拼一次。刚才看过答案，本次不计分。");
       setStage("retry_after_hint");
-      window.setTimeout(() => inputRef.current?.focus(), 0);
+      window.setTimeout(() => focusNativeSpellingInput(inputRef.current), 0);
       return;
     }
 
@@ -66,6 +73,7 @@ export function SpellingPanel({
       setSubmittedAnswer("未输入");
       setMessage("没关系，先看一遍正确拼写。");
       setStage("wrong_show_answer");
+      playCurrentWord();
       return;
     }
     setSubmitting(true);
@@ -73,6 +81,7 @@ export function SpellingPanel({
       const result = await onSubmit(answer, { advanceWithoutMastery: stage === "retry_after_hint" });
       if (!result.correct) {
         setSubmittedAnswer(answer);
+        playCurrentWord();
         if (stage === "retry_after_hint") {
           setAnswer("");
           setMessage("还差一点。先看正确拼写，再继续拼当前词，拼对后才能进入下一个。");
@@ -122,11 +131,12 @@ export function SpellingPanel({
         </div>
         <div className="rounded-2xl border border-border/70 bg-panel/60 p-5">
           <p className="text-xs uppercase tracking-[0.22em] text-muted">中文释义</p>
-          <p className="mt-3 text-2xl font-semibold">{word.meanings.join("；") || "暂无释义"}</p>
+          <p className="mt-3 text-2xl font-semibold">{meaningHintText}</p>
           <p className="mt-4 text-sm text-muted-foreground">{word.partOfSpeech || word.type}</p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row">
           <Input
+            {...nativeSpellingInputProps}
             ref={inputRef}
             value={answer}
             onChange={(event) => {
@@ -147,7 +157,7 @@ export function SpellingPanel({
             disabled={stage === "wrong_show_answer" || stage === "correct" || stage === "retry_done_no_score"}
             className="h-12 rounded-xl"
           />
-          <Button variant="secondary" className="h-12 rounded-xl" onClick={() => void playPronunciation(word, accent)}>
+          <Button variant="secondary" className="h-12 rounded-xl" onClick={playCurrentWord}>
             <Volume2 className="h-4 w-4" />
             发音提示
           </Button>

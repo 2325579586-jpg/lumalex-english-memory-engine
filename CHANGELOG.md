@@ -6,6 +6,34 @@ The format is based on Keep a Changelog, and this project follows Conventional C
 
 ## [Unreleased]
 
+## [2026-06-05]
+
+### Added
+- AI-powered relation-word cards in study details, covering lookalikes, synonyms, antonyms, and derived expressions through the new `/api/word-relations` flow.
+- Similar-looking word discovery from the local dictionary, plus one-tap add-to-deck actions for derived words during study.
+- CET-4 translation phrase system lexicon support, including compact JSON normalization for seeded lexicon data.
+
+### Changed
+- Review and learn detail panels now pass definition/part-of-speech context into richer study helpers and relation-word lookups.
+- System lexicon item APIs now return lexicon metadata together with item lists for both path-based and query-based requests.
+- AI enrichment now rejects low-value fallback meanings/examples instead of silently returning generic placeholder content.
+
+### Fixed
+- Corrected garbled Chinese copy in the new relation-word UI/API path before release validation.
+- Session payloads now include a derived `syncToken` signature for stricter sync authorization checks.
+
+## [2026-05-29]
+
+### Added
+- Shared study text helpers (`frontend/src/lib/study-text.ts`) for spelling-answer normalization and responsive title sizing.
+
+### Changed
+- Learn/Review term titles now use consistent `clamp()`-based sizing (improves long phrases + mixed punctuation display).
+- Today learn queue prioritizes `learning` items first, then sorts by `lastStudiedAt`/`createdAt`.
+
+### Fixed
+- Spelling flow replays pronunciation after empty-submit or incorrect answers, and avoids unhandled promise rejections in autoplay.
+
 ## [2026-05-17]
 
 ### Added
@@ -25,4 +53,3 @@ The format is based on Keep a Changelog, and this project follows Conventional C
 
 ### Known issues
 - Frontend production bundle triggers Vite’s “> 500 kB chunk” warning; consider code splitting the word relations panel and dictionary shards.
-

@@ -113,8 +113,10 @@ function WordLookupCard({
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate text-3xl font-black tracking-tight text-foreground">{entry?.word || selected.display}</h3>
+            <div className="flex min-w-0 flex-wrap items-start gap-2">
+              <h3 className="min-w-0 flex-1 text-4xl font-black leading-[0.95] tracking-normal text-foreground [overflow-wrap:anywhere] sm:text-5xl">
+                {entry?.word || selected.display}
+              </h3>
               <Badge variant="muted" className="text-[10px]">
                 {source}
               </Badge>

@@ -190,6 +190,10 @@ function normalizeWord(word: string) {
   return word.trim().toLowerCase();
 }
 
+function normalizeComparableWord(word: string) {
+  return normalizeWord(word).replace(/[^a-z]/g, "");
+}
+
 function isUsefulEntry(entry: DictionaryEntry | null | undefined): entry is DictionaryEntry {
   return Boolean(
     entry?.meaning?.trim() &&
@@ -206,6 +210,15 @@ function splitMeaning(value: string) {
     .map((item) => item.trim())
     .filter(Boolean)
     .slice(0, 5);
+}
+
+function stripLeadingPartOfSpeech(value: string) {
+  return String(value || "")
+    .replace(
+      /^(\s*(?:n|noun|v|verb|vi|vt|adj|adjective|adv|adverb|phr|phrase|prep|preposition|conj|conjunction)\.?\s*[\/,，;；、]?\s*)+/i,
+      "",
+    )
+    .trim();
 }
 
 function normalizePartOfSpeech(value: string) {
@@ -283,7 +296,7 @@ function keepReadableChinese(value: string) {
 }
 
 function normalizeMeaning(value: string) {
-  const readable = keepReadableChinese(value);
+  const readable = keepReadableChinese(stripLeadingPartOfSpeech(value));
   if (readable) return readable;
   const cjkParts = String(value || "").match(/[\u4e00-\u9fff][\u4e00-\u9fff、，；;。\s]{0,28}/g) || [];
   const cleaned = cjkParts.map((item) => item.trim().replace(/[，。；;]+$/g, "")).filter(Boolean);
@@ -293,12 +306,12 @@ function normalizeMeaning(value: string) {
 function normalizeMeaningList(items: string[], fallback: string, withPos = "") {
   const source = items.length ? items : splitMeaning(fallback);
   const normalized = source
-    .map((item) => normalizeMeaning(item))
+    .map((item) => normalizeMeaning(stripLeadingPartOfSpeech(item)))
     .filter(Boolean)
     .flatMap((item) => splitMeaning(item));
   const unique = Array.from(new Set(normalized)).slice(0, 4);
   if (!withPos) return unique;
-  return unique.slice(0, 3).map((item) => `${withPos} ${item}`.trim());
+  return unique.slice(0, 3).map((item) => `${withPos} ${stripLeadingPartOfSpeech(item)}`.trim());
 }
 
 function normalizeEntry(entry: DictionaryEntry, requestedWord?: string): DictionaryEntry {
@@ -425,6 +438,95 @@ function getLookupCandidates(word: string) {
   return Array.from(new Set(candidates.filter(Boolean)));
 }
 
+function levenshteinDistance(a: string, b: string) {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = Array.from({ length: b.length + 1 }, () => 0);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + cost,
+      );
+    }
+    previous.splice(0, previous.length, ...current);
+  }
+
+  return previous[b.length];
+}
+
+function longestCommonSubsequenceLength(a: string, b: string) {
+  const row = Array.from({ length: b.length + 1 }, () => 0);
+  for (let i = 1; i <= a.length; i += 1) {
+    let previousDiagonal = 0;
+    for (let j = 1; j <= b.length; j += 1) {
+      const saved = row[j];
+      row[j] = a[i - 1] === b[j - 1] ? previousDiagonal + 1 : Math.max(row[j], row[j - 1]);
+      previousDiagonal = saved;
+    }
+  }
+  return row[b.length];
+}
+
+function commonPrefixLength(a: string, b: string) {
+  let length = 0;
+  while (length < a.length && length < b.length && a[length] === b[length]) {
+    length += 1;
+  }
+  return length;
+}
+
+function scoreSimilarLookingWord(base: string, candidate: string) {
+  if (!base || !candidate || base === candidate) return null;
+  if (candidate.length < 3 || candidate.length > 18) return null;
+
+  const lengthDiff = Math.abs(base.length - candidate.length);
+  if (lengthDiff > 4) return null;
+
+  const prefix = commonPrefixLength(base, candidate);
+  const distance = levenshteinDistance(base, candidate);
+  const lcs = longestCommonSubsequenceLength(base, candidate);
+  const lcsRatio = lcs / Math.max(base.length, candidate.length);
+  const closeEdit = distance <= (base.length <= 5 ? 2 : 3);
+  const closeShape = prefix >= 2 && lcsRatio >= 0.58 && lengthDiff <= 3;
+  const contained = (base.includes(candidate) || candidate.includes(base)) && Math.min(base.length, candidate.length) >= 4;
+
+  if (!closeEdit && !closeShape && !contained) return null;
+  return distance * 12 + lengthDiff * 5 - prefix * 4 - lcsRatio * 10;
+}
+
+async function getSimilarLookingCandidates(word: string) {
+  const normalized = normalizeComparableWord(word);
+  const shardName = dictionaryShardName(normalized);
+  const shard = await loadGeneratedDictionaryShard(shardName);
+  return Array.from(
+    new Set([
+      ...Object.keys(basicDictionary),
+      ...Object.keys(fastRelatedDictionary),
+      ...Object.keys(shard),
+    ]),
+  );
+}
+
+async function findSimilarLookingWords(word: string, limit = 8) {
+  const base = normalizeComparableWord(word);
+  if (base.length < 3) return [];
+  const candidates = await getSimilarLookingCandidates(base);
+  return candidates
+    .map((candidate) => {
+      const normalizedCandidate = normalizeComparableWord(candidate);
+      const score = scoreSimilarLookingWord(base, normalizedCandidate);
+      return score === null ? null : { term: candidate, score };
+    })
+    .filter((item): item is { term: string; score: number } => Boolean(item))
+    .sort((a, b) => a.score - b.score || a.term.localeCompare(b.term))
+    .slice(0, limit)
+    .map((item) => item.term);
+}
+
 function adaptEntryToRequestedWord(entry: DictionaryEntry, requestedWord: string): DictionaryEntry {
   const clean = requestedWord.trim();
   if (!clean || normalizeWord(entry.word) === normalizeWord(clean)) return normalizeEntry(entry);
@@ -540,6 +642,10 @@ export const DictionaryService = {
     const unique = Array.from(new Set(words.map(normalizeWord).filter(Boolean)));
     const pairs = await Promise.all(unique.map(async (word) => [word, await DictionaryService.lookup(word, options)] as const));
     return Object.fromEntries(pairs) as Record<string, DictionaryEntry>;
+  },
+
+  async findSimilarLookingWords(word: string, limit = 8) {
+    return findSimilarLookingWords(word, limit);
   },
 
   async generateWithAi(word: string) {

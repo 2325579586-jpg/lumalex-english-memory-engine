@@ -1,6 +1,7 @@
 import { CloudOff, CloudUpload, RotateCw, CheckCircle2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useCloudSyncStatus } from "@/hooks/use-cloud-sync-status";
+import { syncCloudData } from "@/services/cloud-sync-service";
 
 function getStatusMeta(state: ReturnType<typeof useCloudSyncStatus>) {
   switch (state.status) {
@@ -29,11 +30,18 @@ export function MobileSyncBar() {
   const syncState = useCloudSyncStatus();
   const meta = getStatusMeta(syncState);
   const Icon = meta.icon;
+  const isSyncing = syncState.status === "syncing";
 
   return (
-    <div className="mobile-sync-bar sticky top-0 z-10 mb-3 flex items-center justify-between rounded-xl border border-border/70 bg-card/92 px-3 py-2 text-xs backdrop-blur lg:hidden">
+    <button
+      type="button"
+      className="mobile-sync-bar sticky top-0 z-10 mb-3 flex w-full items-center justify-between rounded-xl border border-border/70 bg-card/[0.92] px-3 py-2 text-left text-xs backdrop-blur transition active:scale-[0.99] disabled:cursor-default disabled:active:scale-100 lg:hidden"
+      disabled={isSyncing}
+      title="手动同步"
+      onClick={() => syncCloudData({ pushFirst: true }).catch(() => undefined)}
+    >
       <div className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5 text-primary" />
+        <Icon className={`h-3.5 w-3.5 text-primary ${isSyncing ? "animate-spin" : ""}`} />
         <span className="text-muted-foreground">云同步</span>
       </div>
       <div className="flex items-center gap-2">
@@ -42,6 +50,6 @@ export function MobileSyncBar() {
           {meta.label}
         </Badge>
       </div>
-    </div>
+    </button>
   );
 }

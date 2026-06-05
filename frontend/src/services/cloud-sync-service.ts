@@ -61,9 +61,9 @@ export type CloudSyncState = {
 const CLOUD_SYNC_STATE_EVENT = "lumalex:cloud-sync-state";
 const DELETION_LOG_KEY = "cloud_deletion_log";
 const PENDING_SYNC_QUEUE_KEY = "cloud_pending_sync_queue";
-const REQUEST_TIMEOUT_MS = 30_000;
-const PUSH_CHUNK_SIZE = 50;
-const PULL_PAGE_SIZE = 800;
+const REQUEST_TIMEOUT_MS = 45_000;
+const PUSH_CHUNK_SIZE = 25;
+const PULL_PAGE_SIZE = 250;
 const SYNC_OVERLAP_MS = 5 * 60 * 1000;
 const RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 30_000];
 
@@ -73,12 +73,49 @@ let syncing = false;
 let currentSyncPromise: Promise<void> | undefined;
 let pendingSync = false;
 let pendingPushFirst = false;
+let deferredVisibleSync = false;
+let deferredVisiblePushFirst = false;
 let retryAttempt = 0;
 let syncState: CloudSyncState = { status: "idle" };
 
 function emitSyncState(next: CloudSyncState) {
   syncState = next;
   window.dispatchEvent(new CustomEvent(CLOUD_SYNC_STATE_EVENT, { detail: next }));
+}
+
+function isDocumentHidden() {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
+function clearDeferredVisibleSync() {
+  if (typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", runDeferredVisibleSync);
+  }
+  if (typeof window !== "undefined") {
+    window.removeEventListener("pageshow", runDeferredVisibleSync);
+    window.removeEventListener("focus", runDeferredVisibleSync);
+  }
+}
+
+function runDeferredVisibleSync() {
+  if (!deferredVisibleSync || isDocumentHidden()) return;
+  const pushFirst = deferredVisiblePushFirst;
+  deferredVisibleSync = false;
+  deferredVisiblePushFirst = false;
+  clearDeferredVisibleSync();
+  void syncCloudData({ pushFirst }).catch(() => undefined);
+}
+
+function deferSyncUntilVisible(pushFirst: boolean) {
+  deferredVisibleSync = true;
+  deferredVisiblePushFirst = deferredVisiblePushFirst || pushFirst;
+  if (typeof document !== "undefined") {
+    document.addEventListener("visibilitychange", runDeferredVisibleSync);
+  }
+  if (typeof window !== "undefined") {
+    window.addEventListener("pageshow", runDeferredVisibleSync);
+    window.addEventListener("focus", runDeferredVisibleSync);
+  }
 }
 
 class CloudSyncError extends Error {
@@ -598,9 +635,26 @@ function scheduleFailedSyncRetry(detail: CloudSyncErrorDetail) {
 }
 
 export async function syncCloudData(options: { pushFirst?: boolean } = {}) {
+  const userId = currentUserId();
+  const syncToken = currentSyncToken();
+  if (!userId || !syncToken) return;
+
+  const pushFirst = Boolean(options.pushFirst || hasPendingCloudSync());
+  if (isDocumentHidden()) {
+    deferSyncUntilVisible(pushFirst);
+    if (pushFirst || getPendingCloudSyncCount() > 0) {
+      emitSyncState({
+        status: "queued",
+        lastSyncedAt: syncState.lastSyncedAt,
+        pendingCount: getPendingCloudSyncCount(),
+      });
+    }
+    return;
+  }
+
   if (syncing) {
     pendingSync = true;
-    pendingPushFirst = pendingPushFirst || Boolean(options.pushFirst);
+    pendingPushFirst = pendingPushFirst || pushFirst;
     emitSyncState({
       status: "queued",
       lastSyncedAt: syncState.lastSyncedAt,
@@ -609,13 +663,9 @@ export async function syncCloudData(options: { pushFirst?: boolean } = {}) {
     return currentSyncPromise;
   }
 
-  const userId = currentUserId();
-  const syncToken = currentSyncToken();
-  if (!userId || !syncToken) return;
-
   syncing = true;
   currentSyncPromise = (async () => {
-    const shouldPushFirst = Boolean(options.pushFirst || hasPendingCloudSync());
+    const shouldPushFirst = pushFirst;
     const lastSyncedAt = await getLastCloudSyncedAt();
     const incrementalSince = lastSyncedAt ? Math.max(0, lastSyncedAt - SYNC_OVERLAP_MS) : undefined;
     emitSyncState({
@@ -646,6 +696,9 @@ export async function syncCloudData(options: { pushFirst?: boolean } = {}) {
       clearPendingCloudSync(userId);
       retryAttempt = 0;
       cancelRetryTimer();
+      deferredVisibleSync = false;
+      deferredVisiblePushFirst = false;
+      clearDeferredVisibleSync();
       emitSyncState({ status: "success", lastSyncedAt: syncedAt, pendingCount: 0 });
       window.dispatchEvent(new CustomEvent("lumalex:cloud-sync"));
     } catch (error) {

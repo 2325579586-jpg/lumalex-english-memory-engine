@@ -6,7 +6,7 @@ import { getLexiconCatalog, getLexiconItems } from "@/services/lexicon-service";
 import type { BackendLexiconDto, BackendLexiconItemDto } from "@/types/api";
 import type { Deck, WordItem, WordStatus } from "@/types/domain";
 
-const SYSTEM_LEXICON_SYNC_VERSION = 3;
+const SYSTEM_LEXICON_SYNC_VERSION = 5;
 
 function normalizeTerm(term: string) {
   return term.trim().toLowerCase();

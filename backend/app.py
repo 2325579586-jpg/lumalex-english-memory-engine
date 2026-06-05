@@ -43,6 +43,17 @@ SYSTEM_LEXICONS = [
         "scope": "system",
     },
     {
+        "id": "system-cet4-translation-phrases",
+        "key": "cet4-translation-phrases",
+        "slug": "cet4-translation-phrases",
+        "name": {"en": "CET-4 Translation Phrases", "zh": "四级翻译短语词库"},
+        "description": {
+            "en": "High-frequency CET-4 translation phrases collected from the provided image notes.",
+            "zh": "整理自图片资料的大学英语四级翻译常考短语和句型。",
+        },
+        "scope": "system",
+    },
+    {
         "id": "system-cet6",
         "key": "cet6",
         "slug": "cet6",
@@ -76,9 +87,30 @@ REACT_DIST_DIR = REACT_FRONTEND_DIR / "dist"
 SYSTEM_LEXICON_DATA_DIR = BASE_DIR / "system_lexicon_data"
 SYSTEM_LEXICON_DATA_FILES = {
     "system-cet4": SYSTEM_LEXICON_DATA_DIR / "cet4.json",
+    "system-cet4-translation-phrases": SYSTEM_LEXICON_DATA_DIR / "cet4-translation-phrases.json",
     "system-cet6": SYSTEM_LEXICON_DATA_DIR / "cet6.json",
 }
 SYSTEM_LEXICON_ITEMS_CACHE: dict[str, list[dict]] = {}
+SYSTEM_LEXICON_CATEGORY_EN = {
+    "动作": "Actions",
+    "政治": "Politics",
+    "经济": "Economy",
+    "科技": "Technology",
+    "生活": "Life",
+    "环保": "Environment",
+    "地理": "Geography",
+    "文化": "Culture",
+    "经济发展与改革": "Economic Development and Reform",
+    "文化与传统": "Culture and Tradition",
+    "社会与人民生活": "Society and People's Livelihood",
+    "科技与创新": "Technology and Innovation",
+    "环境与生态": "Environment and Ecology",
+    "教育与人才": "Education and Talent",
+    "政治与政策": "Politics and Policy",
+    "旅游与地理": "Tourism and Geography",
+    "健康与医疗": "Health and Medical Care",
+    "行为与趋势": "Actions and Trends",
+}
 APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
 APP_PORT = int(os.getenv("APP_PORT", "8000"))
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip()
@@ -355,9 +387,11 @@ class UserAccount(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
     def to_session(self) -> dict:
+        signature = hashlib.sha256(f"{self.id}:{self.password_hash}".encode("utf-8")).hexdigest()
         return {
             "userId": self.id,
             "username": self.username,
+            "syncToken": f"{self.id}.{signature}",
             "loggedInAt": int(datetime.utcnow().timestamp() * 1000),
         }
 
@@ -571,6 +605,53 @@ def get_system_lexicon_frontend(lexicon_id: str) -> Optional[dict]:
     }
 
 
+def get_localized_payload(value) -> dict:
+    if isinstance(value, dict):
+        return {
+            "en": str(value.get("en") or "").strip(),
+            "zh": str(value.get("zh") or "").strip(),
+        }
+    if isinstance(value, str):
+        return {"en": "", "zh": value.strip()}
+    return {"en": "", "zh": ""}
+
+
+def normalize_compact_system_items(raw_payload, lexicon_id: str) -> list:
+    if isinstance(raw_payload, list):
+        return raw_payload
+    if not isinstance(raw_payload, dict) or not isinstance(raw_payload.get("entries"), list):
+        return []
+
+    lexicon_key = raw_payload.get("key") or re.sub(r"^system-", "", lexicon_id)
+    prefix = raw_payload.get("id") or lexicon_id
+    normalized_items = []
+    for index, entry in enumerate(raw_payload["entries"], start=1):
+        if not isinstance(entry, list) or len(entry) < 2:
+            continue
+        text_value = str(entry[0] or "").strip()
+        meaning_zh = str(entry[1] or "").strip()
+        category_zh = str(entry[2] if len(entry) > 2 else "四级翻译").strip() or "四级翻译"
+        if not text_value:
+            continue
+        normalized_items.append(
+            {
+                "id": f"{prefix}-{index:04d}",
+                "text": text_value,
+                "kind": "phrase",
+                "pos": "phrase",
+                "category": {
+                    "en": SYSTEM_LEXICON_CATEGORY_EN.get(category_zh, "CET-4 Translation"),
+                    "zh": category_zh,
+                },
+                "difficulty": {"en": "CET-4 translation", "zh": "四级翻译"},
+                "meaning": {"en": text_value, "zh": meaning_zh},
+                "lexiconKey": lexicon_key,
+                "lexiconId": lexicon_id,
+            }
+        )
+    return normalized_items
+
+
 def load_system_lexicon_items(lexicon_id: str) -> list[dict]:
     if lexicon_id in SYSTEM_LEXICON_ITEMS_CACHE:
         return SYSTEM_LEXICON_ITEMS_CACHE[lexicon_id]
@@ -586,6 +667,7 @@ def load_system_lexicon_items(lexicon_id: str) -> list[dict]:
         SYSTEM_LEXICON_ITEMS_CACHE[lexicon_id] = []
         return []
 
+    raw_items = normalize_compact_system_items(raw_items, lexicon_id)
     if not isinstance(raw_items, list):
         SYSTEM_LEXICON_ITEMS_CACHE[lexicon_id] = []
         return []
@@ -605,16 +687,16 @@ def load_system_lexicon_items(lexicon_id: str) -> list[dict]:
                 "kind": raw_item.get("kind") or "word",
                 "phonetic": (raw_item.get("phonetic") or "").strip(),
                 "pos": (raw_item.get("pos") or "").strip(),
-                "category": {"en": "", "zh": ""},
-                "difficulty": {"en": "", "zh": ""},
+                "category": get_localized_payload(raw_item.get("category")),
+                "difficulty": get_localized_payload(raw_item.get("difficulty")),
                 "meaning": {
                     "en": ((raw_item.get("meaning") or {}).get("en") if isinstance(raw_item.get("meaning"), dict) else "")
                     or "",
                     "zh": ((raw_item.get("meaning") or {}).get("zh") if isinstance(raw_item.get("meaning"), dict) else "")
                     or "",
                 },
-                "example": {"en": "", "zh": ""},
-                "mnemonic": {"en": "", "zh": ""},
+                "example": get_localized_payload(raw_item.get("example")),
+                "mnemonic": get_localized_payload(raw_item.get("mnemonic")),
                 "audioUrl": "",
                 "lexiconKey": raw_item.get("lexiconKey") or system.get("key", ""),
                 "lexiconId": raw_item.get("lexiconId") or lexicon_id,
@@ -704,6 +786,230 @@ def build_item_from_payload(payload: dict) -> dict:
     }
 
 
+WORD_RELATION_GROUPS = [
+    {
+        "type": "lookalike",
+        "title": "长相近似",
+        "description": "容易和当前单词看混、拼错或读错的词",
+    },
+    {
+        "type": "synonym",
+        "title": "近义词",
+        "description": "意思接近，但语气或使用场景不同的词",
+    },
+    {
+        "type": "antonym",
+        "title": "反义词",
+        "description": "意思相反或方向相反的词",
+    },
+    {
+        "type": "derived",
+        "title": "派生 / 相关词",
+        "description": "由当前单词派生出的词、短语或高频相关表达",
+    },
+]
+WORD_RELATION_CACHE: dict[str, dict] = {}
+
+
+def relation_text(value) -> str:
+    return str(value or "").strip()
+
+
+def word_relation_cache_key(payload: dict) -> str:
+    return "|".join(
+        [
+            normalize_text(relation_text(payload.get("word"))),
+            relation_text(payload.get("partOfSpeech")).lower(),
+            relation_text(payload.get("definition"))[:160],
+            relation_text(payload.get("language")) or "zh-CN",
+        ]
+    )
+
+
+def strip_json_fence(value: str) -> str:
+    clean = relation_text(value)
+    if not clean.startswith("```"):
+        return clean
+    clean = re.sub(r"^```(?:json)?\s*", "", clean, flags=re.I)
+    clean = re.sub(r"\s*```$", "", clean, flags=re.I)
+    return clean.strip()
+
+
+def parse_llm_json_content(value: str) -> dict:
+    clean = strip_json_fence(value)
+    try:
+        return json.loads(clean)
+    except Exception:
+        start = clean.find("{")
+        end = clean.rfind("}")
+        if start >= 0 and end > start:
+            return json.loads(clean[start : end + 1])
+        raise RuntimeError("LLM did not return valid JSON.")
+
+
+def sanitize_relation_item(value) -> Optional[dict]:
+    if not isinstance(value, dict):
+        return None
+    word = relation_text(value.get("word"))
+    if not word:
+        return None
+    return {
+        "word": word,
+        "phonetic": relation_text(value.get("phonetic")),
+        "partOfSpeech": relation_text(value.get("partOfSpeech")),
+        "chinese": relation_text(value.get("chinese")),
+        "note": relation_text(value.get("note")),
+        "difference": relation_text(value.get("difference")),
+        "example": relation_text(value.get("example")),
+        "exampleZh": relation_text(value.get("exampleZh")),
+    }
+
+
+def normalize_word_relations_response(payload, fallback_word: str) -> dict:
+    source = payload if isinstance(payload, dict) else {}
+    raw_groups = source.get("groups") if isinstance(source.get("groups"), list) else []
+    group_map = {}
+    for raw_group in raw_groups:
+        if not isinstance(raw_group, dict):
+            continue
+        group_type = relation_text(raw_group.get("type"))
+        meta = next((item for item in WORD_RELATION_GROUPS if item["type"] == group_type), None)
+        if not meta:
+            continue
+        raw_items = raw_group.get("items") if isinstance(raw_group.get("items"), list) else []
+        items = [item for item in (sanitize_relation_item(raw_item) for raw_item in raw_items) if item][:6]
+        group_map[group_type] = {
+            **meta,
+            "title": relation_text(raw_group.get("title")) or meta["title"],
+            "description": relation_text(raw_group.get("description")) or meta["description"],
+            "items": items,
+        }
+    return {
+        "word": relation_text(source.get("word")) or fallback_word,
+        "groups": [group_map.get(group["type"], {**group, "items": []}) for group in WORD_RELATION_GROUPS],
+    }
+
+
+def build_word_relations_user_prompt(word: str, part_of_speech: str, definition: str) -> str:
+    return f"""请为英文单词生成关系词卡片数据。
+
+单词：{word}
+词性：{part_of_speech}
+中文释义：{definition}
+
+要求：
+1. 返回 4 个分组：
+   - lookalike：长相近似、容易看错或拼错的词
+   - synonym：近义词
+   - antonym：反义词
+   - derived：派生词、相关词或常见短语
+2. 每组最多 6 个词。
+3. 每个词都要适合英语学习场景。
+4. 不要编造不存在的单词。
+5. 长相近似词必须在拼写、字形或读音上容易混淆。
+6. 近义词必须说明和原词的细微区别。
+7. 反义词必须说明和原词的反向关系。
+8. 派生词可以包含不同词性、短语、固定搭配。
+9. 中文解释要简洁准确。
+10. 例句要自然、简单，适合中级英语学习者。
+11. 只返回 JSON，格式如下：
+
+{{
+  "word": "{word}",
+  "groups": [
+    {{
+      "type": "lookalike",
+      "title": "长相近似",
+      "description": "容易和当前单词看混、拼错或读错的词",
+      "items": [
+        {{
+          "word": "string",
+          "phonetic": "string",
+          "partOfSpeech": "string",
+          "chinese": "string",
+          "note": "string",
+          "difference": "string",
+          "example": "string",
+          "exampleZh": "string"
+        }}
+      ]
+    }},
+    {{
+      "type": "synonym",
+      "title": "近义词",
+      "description": "意思接近，但语气或使用场景不同的词",
+      "items": []
+    }},
+    {{
+      "type": "antonym",
+      "title": "反义词",
+      "description": "意思相反或方向相反的词",
+      "items": []
+    }},
+    {{
+      "type": "derived",
+      "title": "派生 / 相关词",
+      "description": "由当前单词派生出的词、短语或高频相关表达",
+      "items": []
+    }}
+  ]
+}}"""
+
+
+def generate_word_relations(payload: dict) -> dict:
+    api_key = (
+        os.getenv("LLM_API_KEY", "").strip()
+        or os.getenv("COMPAT_API_KEY", "").strip()
+        or os.getenv("OPENAI_API_KEY", "").strip()
+    )
+    if not api_key:
+        raise RuntimeError("LLM_API_KEY, COMPAT_API_KEY, or OPENAI_API_KEY is required.")
+
+    model = (
+        os.getenv("LLM_MODEL", "").strip()
+        or os.getenv("COMPAT_MODEL", "").strip()
+        or os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
+        or "gpt-4.1-mini"
+    )
+    base_url = (
+        os.getenv("LLM_BASE_URL", "").strip()
+        or os.getenv("COMPAT_BASE_URL", "").strip()
+        or os.getenv("OPENAI_BASE_URL", "").strip()
+        or "https://api.openai.com/v1"
+    ).rstrip("/")
+    system_prompt = (
+        "你是一个专业的英语词汇学习助手。你的任务是为中国英语学习者生成准确、实用、适合背单词场景的关系词数据。"
+        "你必须只返回合法 JSON，不要返回 Markdown，不要解释，不要添加多余文本。"
+    )
+    response = requests.post(
+        f"{base_url}/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": model,
+            "temperature": 0.35,
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": build_word_relations_user_prompt(
+                        relation_text(payload.get("word")),
+                        relation_text(payload.get("partOfSpeech")),
+                        relation_text(payload.get("definition")),
+                    ),
+                },
+            ],
+        },
+        timeout=45,
+    )
+    response.raise_for_status()
+    content = response.json()["choices"][0]["message"]["content"]
+    return normalize_word_relations_response(parse_llm_json_content(content), relation_text(payload.get("word")))
+
+
 @app.get("/api/health")
 def health():
     compat_key = os.getenv("COMPAT_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip()
@@ -757,6 +1063,32 @@ def enrich():
         ), status_code
 
     return jsonify(draft)
+
+
+@app.post("/api/word-relations")
+def word_relations():
+    payload = request.get_json(silent=True) or {}
+    word = relation_text(payload.get("word"))
+    if not word:
+        return jsonify({"error": "word is required"}), 400
+
+    request_payload = {
+        "word": word,
+        "definition": relation_text(payload.get("definition")),
+        "partOfSpeech": relation_text(payload.get("partOfSpeech")),
+        "language": relation_text(payload.get("language")) or "zh-CN",
+    }
+    key = word_relation_cache_key(request_payload)
+    if key in WORD_RELATION_CACHE:
+        return jsonify(WORD_RELATION_CACHE[key])
+
+    try:
+        result = generate_word_relations(request_payload)
+        WORD_RELATION_CACHE[key] = result
+        return jsonify(result)
+    except Exception as error:
+        message, status_code, detail = describe_ai_error(error)
+        return jsonify({"error": message, "detail": detail, "code": "word_relations_failed"}), status_code
 
 
 @app.post("/api/auth/register")
@@ -1011,10 +1343,23 @@ def create_lexicon():
         return jsonify({"lexicon": row.to_frontend(), "created": True}), 201
 
 
+@app.get("/api/lexicons/items")
+def get_lexicon_items_by_query():
+    lexicon_id = (request.args.get("lexiconId") or "").strip()
+    if not lexicon_id:
+        return jsonify({"error": "lexiconId is required"}), 400
+    return get_lexicon_items(lexicon_id)
+
+
 @app.get("/api/lexicons/<lexicon_id>/items")
 def get_lexicon_items(lexicon_id: str):
     if lexicon_id in SYSTEM_LEXICON_LOOKUP:
-        return jsonify({"items": load_system_lexicon_items(lexicon_id)})
+        return jsonify(
+            {
+                "lexicon": get_system_lexicon_frontend(lexicon_id),
+                "items": load_system_lexicon_items(lexicon_id),
+            }
+        )
 
     user_key = get_user_key()
     with Session(engine) as session:
@@ -1028,7 +1373,12 @@ def get_lexicon_items(lexicon_id: str):
             )
             .order_by(LexiconItem.created_at.desc())
         ).all()
-    return jsonify({"items": [row.to_frontend() for row in rows]})
+    return jsonify(
+        {
+            "lexicon": lexicon_row.to_frontend(item_count=len(rows)) if lexicon_row else None,
+            "items": [row.to_frontend() for row in rows],
+        }
+    )
 
 
 @app.delete("/api/lexicons/<lexicon_id>")

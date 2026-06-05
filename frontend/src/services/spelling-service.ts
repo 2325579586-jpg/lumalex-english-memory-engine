@@ -1,4 +1,5 @@
 import { wordRepository } from "@/repositories/word-repository";
+import { normalizeSpellingAnswer } from "@/lib/study-text";
 import { requireCurrentUserId, withUserScopedKey } from "@/services/auth-session";
 import { removeStorage, readStorage, writeStorage } from "@/services/storage";
 import type { WordItem } from "@/types/domain";
@@ -35,10 +36,6 @@ function clearStoredSession(source: SpellingSource) {
 async function loadWords(wordIds: string[]) {
   const words = await Promise.all(wordIds.map((id) => wordRepository.getById(id)));
   return words.filter(Boolean) as WordItem[];
-}
-
-function normalizeText(value: string) {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function moveCurrentWordToReviewAgain(snapshot: ActiveSpellingSession): ActiveSpellingSession {
@@ -110,7 +107,7 @@ export async function submitSpellingAnswer(source: SpellingSource, answer: strin
     throw new Error("当前拼写词条不存在。");
   }
 
-  const isCorrect = normalizeText(answer) === normalizeText(currentWord.term);
+  const isCorrect = normalizeSpellingAnswer(answer) === normalizeSpellingAnswer(currentWord.term);
   if (options.advanceWithoutMastery) {
     if (!isCorrect) {
       const sameSnapshot: ActiveSpellingSession = {

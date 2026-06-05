@@ -1,6 +1,12 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { ensureSchema, getSql } = require("../api/_lib/db");
+const { normalizeSystemItems } = require("../api/_lib/system-lexicons");
+
+function loadSystemItems(fileName, lexiconId) {
+  const filePath = path.join(process.cwd(), "backend", "system_lexicon_data", fileName);
+  return normalizeSystemItems(JSON.parse(fs.readFileSync(filePath, "utf8")), lexiconId);
+}
 
 const SYSTEM_LEXICONS = [
   {
@@ -25,7 +31,19 @@ const SYSTEM_LEXICONS = [
       zh: "面向大学英语四级的核心词汇。",
     },
     scope: "system",
-    items: JSON.parse(fs.readFileSync(path.join(process.cwd(), "backend", "system_lexicon_data", "cet4.json"), "utf8")),
+    items: loadSystemItems("cet4.json", "system-cet4"),
+  },
+  {
+    id: "system-cet4-translation-phrases",
+    key: "cet4-translation-phrases",
+    slug: "cet4-translation-phrases",
+    name: { en: "CET-4 Translation Phrases", zh: "四级翻译短语词库" },
+    description: {
+      en: "High-frequency CET-4 translation phrases collected from the provided image notes.",
+      zh: "整理自图片资料的大学英语四级翻译常考短语和句型。",
+    },
+    scope: "system",
+    items: loadSystemItems("cet4-translation-phrases.json", "system-cet4-translation-phrases"),
   },
   {
     id: "system-cet6",
@@ -37,7 +55,7 @@ const SYSTEM_LEXICONS = [
       zh: "面向大学英语六级的高频词汇。",
     },
     scope: "system",
-    items: JSON.parse(fs.readFileSync(path.join(process.cwd(), "backend", "system_lexicon_data", "cet6.json"), "utf8")),
+    items: loadSystemItems("cet6.json", "system-cet6"),
   },
   {
     id: "system-ielts",
@@ -106,6 +124,7 @@ async function main() {
       (SELECT COUNT(*)::int FROM system_lexicons) AS lexicons,
       (SELECT COUNT(*)::int FROM system_lexicon_items) AS items,
       (SELECT COUNT(*)::int FROM system_lexicon_items WHERE lexicon_id = 'system-cet4') AS cet4_items,
+      (SELECT COUNT(*)::int FROM system_lexicon_items WHERE lexicon_id = 'system-cet4-translation-phrases') AS cet4_translation_phrase_items,
       (SELECT COUNT(*)::int FROM system_lexicon_items WHERE lexicon_id = 'system-cet6') AS cet6_items
   `;
 
