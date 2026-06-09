@@ -6,6 +6,16 @@ The format is based on Keep a Changelog, and this project follows Conventional C
 
 ## [Unreleased]
 
+### Added
+- GitHub Actions frontend build workflow for pull requests and pushes to `main`.
+- Pull request template with weekly goal, growth rationale, validation, risk, and rollback sections.
+- Bug report and feature request issue templates to make external contributions easier to triage.
+- Weekly update note for 2026-06-09 documenting the CI and contribution intake improvements.
+
+### Changed
+- README now highlights the live demo, current build checks, and contribution expectations.
+- TODO now reflects that frontend build CI exists while lint/test/typecheck scripts remain future work.
+
 ## [2026-05-17]
 
 ### Added

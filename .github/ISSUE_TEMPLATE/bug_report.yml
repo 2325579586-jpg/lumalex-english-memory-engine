@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible problem in LumaLex.
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping make LumaLex more reliable. Please avoid sharing private vocabulary files, tokens, or database credentials.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the bug and the result you expected instead.
+      placeholder: "Example: Review mode marks a remembered word as weak after..."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: List the smallest flow that reproduces the issue.
+      placeholder: |
+        1. Open...
+        2. Click...
+        3. See...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Learning flow
+        - Review flow
+        - Dictionary / word relations
+        - Cloud sync
+        - Authentication
+        - Mobile UI
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: browser
+    attributes:
+      label: Browser / device
+      placeholder: "Chrome on Windows, Safari on iPhone, etc."
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Add screenshots or console output if useful, but remove secrets first.
+      render: shell
