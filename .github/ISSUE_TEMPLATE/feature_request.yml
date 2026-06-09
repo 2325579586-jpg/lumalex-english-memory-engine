@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest a focused improvement for learning, review, sync, docs, or open-source growth.
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this solve?
+      description: Explain the learner, maintainer, or contributor need.
+      placeholder: "Example: Visitors cannot try a review flow without first adding words..."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Keep it small enough for one focused PR when possible.
+      placeholder: "Add a sample review queue with..."
+    validations:
+      required: true
+  - type: dropdown
+    id: growth_area
+    attributes:
+      label: Growth area
+      options:
+        - GitHub open-source presentation
+        - Website conversion / sharing
+        - Product experience
+        - Technical trust / stability
+        - Content / community
+    validations:
+      required: true
+  - type: textarea
+    id: tradeoffs
+    attributes:
+      label: Tradeoffs or risks
+      description: Note any privacy, bundle size, UX, or maintenance concerns.

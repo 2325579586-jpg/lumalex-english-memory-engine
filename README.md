@@ -6,6 +6,7 @@ The product idea is simple: learn a word once, then let the system keep bringing
 
 ## Highlights
 
+- Live demo: https://worldapp-livid.vercel.app
 - Five real review modes: English to Chinese, Chinese to English, listening comprehension, spelling review, and sentence cloze.
 - Memory scheduling: review results update strength, wrong counts, focus status, and next review time.
 - Cross-device account sync: vocabulary, learning history, review progress, settings, and active sessions can follow the same account.
@@ -81,6 +82,30 @@ Build the production frontend:
 cd frontend
 npm.cmd run build
 ```
+
+## Development Checks
+
+The repository includes a GitHub Actions workflow that runs the current production frontend build on pushes and pull requests to `main`.
+
+Current local checks:
+
+```bash
+npm install
+cd frontend
+npm install
+npm run build
+```
+
+Lint, test, and standalone typecheck scripts are not configured yet; see `TODO.md` for the next stability improvements.
+
+## Contributing
+
+Focused pull requests are welcome. The most useful contributions are small improvements to review UX, offline dictionary behavior, sync reliability, documentation, and build confidence.
+
+- Use the GitHub issue templates for reproducible bugs or focused feature requests.
+- Use the PR template to describe the weekly/product goal, checks run, risks, and rollback path.
+- Do not commit secrets, private vocabulary files, local database dumps, or raw PDF word sources.
+- Good first contribution candidates are listed in `TODO.md`.
 
 ## Environment
 
