@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ensureDeckOptions, quickAddTermToDeck, type DeckOption } from "@/services/add-words-service";
 import { DictionaryService, type DictionaryEntry } from "@/services/dictionary-service";
-import { playTextPronunciation } from "@/services/pronunciation-service";
+import { playTermPronunciation } from "@/services/pronunciation-service";
 import type { DerivedWord } from "@/types/domain";
 
 type StudyDetailTabsProps = {
@@ -195,7 +195,7 @@ function RelatedWordCard({
         </div>
       ) : null}
 
-      <Button type="button" variant="outline" className="mt-4 h-10 w-full rounded-full" onClick={() => void playTextPronunciation(entry.term, preferredAccent)}>
+      <Button type="button" variant="outline" className="mt-4 h-10 w-full rounded-full" onClick={() => void playTermPronunciation(entry.term, preferredAccent)}>
         <Volume2 className="mr-2 h-4 w-4" />
         发音
       </Button>
@@ -275,7 +275,7 @@ function DerivedWordCards({
                   size="icon"
                   className="h-9 w-9 shrink-0 rounded-full"
                   title="播放发音"
-                  onClick={() => void playTextPronunciation(item.term, preferredAccent)}
+                  onClick={() => void playTermPronunciation(item.term, preferredAccent)}
                 >
                   <Volume2 className="h-4 w-4" />
                 </Button>

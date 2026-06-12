@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { quickAddTermToDeck } from "@/services/add-words-service";
 import { DictionaryService, type DictionaryEntry } from "@/services/dictionary-service";
-import { playTextPronunciation } from "@/services/pronunciation-service";
+import { playTermPronunciation, playTextPronunciation } from "@/services/pronunciation-service";
 import type { DerivedWord } from "@/types/domain";
 
 type RelationTab = "collocations" | "derived" | "roots" | "synonyms" | "antonyms" | "example";
@@ -289,7 +289,7 @@ function RelatedWordCard({
       )}
 
       <div className="mt-4 flex items-center gap-2">
-        <Button type="button" variant="outline" className="h-10 flex-1 rounded-full" onClick={() => void playTextPronunciation(word.term, preferredAccent)}>
+        <Button type="button" variant="outline" className="h-10 flex-1 rounded-full" onClick={() => void playTermPronunciation(word.term, preferredAccent)}>
           <Volume2 className="mr-2 h-4 w-4" />
           发音
         </Button>

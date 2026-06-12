@@ -58,10 +58,15 @@ function parseJsonContent(value) {
   }
 }
 
-function sanitizeItem(value) {
+function isSingleEnglishWord(value) {
+  return /^[A-Za-z]+$/.test(text(value));
+}
+
+function sanitizeItem(value, groupType) {
   if (!value || typeof value !== "object") return null;
   const word = text(value.word);
   if (!word) return null;
+  if (groupType === "lookalike" && !isSingleEnglishWord(word)) return null;
   return {
     word,
     phonetic: text(value.phonetic),
@@ -85,7 +90,7 @@ function normalizeResponse(payload, fallbackWord) {
     const meta = GROUPS.find((item) => item.type === type);
     if (!meta) continue;
     const items = Array.isArray(rawGroup.items)
-      ? rawGroup.items.map(sanitizeItem).filter(Boolean).slice(0, 6)
+      ? rawGroup.items.map((item) => sanitizeItem(item, type)).filter(Boolean).slice(0, 6)
       : [];
     groupMap.set(type, {
       ...meta,
@@ -118,6 +123,9 @@ function buildUserPrompt({ word, partOfSpeech, definition }) {
 3. 每个词都要适合英语学习场景。
 4. 不要编造不存在的单词。
 5. 长相近似词必须在拼写、字形或读音上容易混淆。
+   - lookalike 分组只能返回单个连续英文单词，只能包含英文字母 A-Z/a-z。
+   - lookalike 分组不要返回短语、固定搭配、带空格表达、带连字符表达或句子。
+   - 如果找不到足够的长相近似单词，可以少于 6 个，不要用短语凑数。
 6. 近义词必须说明和原词的细微区别。
 7. 反义词必须说明和原词的反向关系。
 8. 派生词可以包含不同词性、短语、固定搭配。

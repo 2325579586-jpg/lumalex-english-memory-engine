@@ -865,6 +865,10 @@ def sanitize_relation_item(value) -> Optional[dict]:
     }
 
 
+def is_single_english_word(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z]+", relation_text(value)))
+
+
 def normalize_word_relations_response(payload, fallback_word: str) -> dict:
     source = payload if isinstance(payload, dict) else {}
     raw_groups = source.get("groups") if isinstance(source.get("groups"), list) else []
@@ -877,7 +881,10 @@ def normalize_word_relations_response(payload, fallback_word: str) -> dict:
         if not meta:
             continue
         raw_items = raw_group.get("items") if isinstance(raw_group.get("items"), list) else []
-        items = [item for item in (sanitize_relation_item(raw_item) for raw_item in raw_items) if item][:6]
+        items = [item for item in (sanitize_relation_item(raw_item) for raw_item in raw_items) if item]
+        if group_type == "lookalike":
+            items = [item for item in items if is_single_english_word(item.get("word", ""))]
+        items = items[:6]
         group_map[group_type] = {
             **meta,
             "title": relation_text(raw_group.get("title")) or meta["title"],
@@ -907,6 +914,9 @@ def build_word_relations_user_prompt(word: str, part_of_speech: str, definition:
 3. 每个词都要适合英语学习场景。
 4. 不要编造不存在的单词。
 5. 长相近似词必须在拼写、字形或读音上容易混淆。
+   - lookalike 分组只能返回单个连续英文单词，只能包含英文字母 A-Z/a-z。
+   - lookalike 分组不要返回短语、固定搭配、带空格表达、带连字符表达或句子。
+   - 如果找不到足够的长相近似单词，可以少于 6 个，不要用短语凑数。
 6. 近义词必须说明和原词的细微区别。
 7. 反义词必须说明和原词的反向关系。
 8. 派生词可以包含不同词性、短语、固定搭配。

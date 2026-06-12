@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DictionaryService, type DictionaryEntry } from "@/services/dictionary-service";
-import { playTextPronunciation } from "@/services/pronunciation-service";
+import { playTermPronunciation } from "@/services/pronunciation-service";
 import { findExistingWord, getWordRelations } from "@/services/word-relations-service";
 import type { WordRelation, WordRelationsResponse } from "@/types/word-relations";
 
@@ -121,7 +121,7 @@ function SelectedRelationSheet({
         </div>
       ) : null}
 
-      <Button type="button" variant="outline" className="mt-4 h-10 w-full rounded-full" onClick={() => void playTextPronunciation(relation.word, preferredAccent)}>
+      <Button type="button" variant="outline" className="mt-4 h-10 w-full rounded-full" onClick={() => void playTermPronunciation(relation.word, preferredAccent)}>
         <Volume2 className="h-4 w-4" />
         发音
       </Button>

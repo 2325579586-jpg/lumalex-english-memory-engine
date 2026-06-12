@@ -44,6 +44,10 @@ function compactText(value: unknown) {
   return String(value || "").trim();
 }
 
+function isSingleEnglishWord(value: string) {
+  return /^[A-Za-z]+$/.test(value.trim());
+}
+
 function cacheKey(request: WordRelationsRequest) {
   return [
     normalizeTerm(request.word),
@@ -62,11 +66,12 @@ function writeCacheEntry(key: string, value: WordRelationsResponse) {
   writeStorage(CACHE_KEY, { ...cache, [key]: value });
 }
 
-function sanitizeItem(value: unknown): WordRelation | null {
+function sanitizeItem(value: unknown, groupType: WordRelationType): WordRelation | null {
   if (!value || typeof value !== "object") return null;
   const source = value as Record<string, unknown>;
   const word = compactText(source.word);
   if (!word) return null;
+  if (groupType === "lookalike" && !isSingleEnglishWord(word)) return null;
   return {
     word,
     phonetic: compactText(source.phonetic) || undefined,
@@ -90,7 +95,7 @@ export function normalizeWordRelationsResponse(payload: unknown, fallbackWord: s
     const type = compactText(groupSource.type) as WordRelationType;
     if (!groupMeta[type]) continue;
     const items = Array.isArray(groupSource.items)
-      ? groupSource.items.map(sanitizeItem).filter((item): item is WordRelation => Boolean(item)).slice(0, 6)
+      ? groupSource.items.map((item) => sanitizeItem(item, type)).filter((item): item is WordRelation => Boolean(item)).slice(0, 6)
       : [];
     groupMap.set(type, {
       ...groupMeta[type],

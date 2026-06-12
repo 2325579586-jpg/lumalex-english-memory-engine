@@ -45,6 +45,10 @@ export async function playTextPronunciation(text: string, preferredAccent: "uk" 
   return speakWithBrowser(text, preferredAccent);
 }
 
+export async function playTermPronunciation(term: string, preferredAccent: "uk" | "us") {
+  return playPronunciation({ term, pronunciationUk: "", pronunciationUs: "" }, preferredAccent);
+}
+
 export function warmPronunciationVoices() {
   const synth = getSpeechSynthesis();
   if (!synth) return;

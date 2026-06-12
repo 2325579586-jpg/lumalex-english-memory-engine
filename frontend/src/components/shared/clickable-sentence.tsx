@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { quickAddTermToDeck } from "@/services/add-words-service";
 import { DictionaryService, type DictionaryEntry } from "@/services/dictionary-service";
-import { playTextPronunciation } from "@/services/pronunciation-service";
+import { playTermPronunciation } from "@/services/pronunciation-service";
 
 type ClickableSentenceProps = {
   sentence: string;
@@ -138,7 +138,7 @@ function WordLookupCard({
         {entry?.commonMeanings?.length ? <p className="mt-2 text-xs text-muted-foreground">常见义：{entry.commonMeanings.slice(0, 3).join("；")}</p> : null}
 
         <div className="mt-4 flex items-center gap-2">
-          <Button type="button" variant="outline" className="h-10 flex-1 rounded-full" onClick={() => void playTextPronunciation(entry?.word || selected.query, preferredAccent)}>
+          <Button type="button" variant="outline" className="h-10 flex-1 rounded-full" onClick={() => void playTermPronunciation(entry?.word || selected.query, preferredAccent)}>
             <Volume2 className="mr-2 h-4 w-4" />
             发音
           </Button>

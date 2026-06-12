@@ -1,6 +1,7 @@
 import { ArrowLeft, Clock3, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { SpellingPanel } from "@/components/shared/spelling-panel";
 import { StudyDetailTabs } from "@/components/shared/study-detail-tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { getSpellingMeaningText, getStudyTitleStyle, normalizeSpellingAnswer } f
 import { cn } from "@/lib/utils";
 import { playPronunciation, warmPronunciationVoices } from "@/services/pronunciation-service";
 import { getReviewResultScore, hasAnsweredReviewWord } from "@/services/review-service";
+import { abandonSpellingSession, getSpellingSessionState, startSpellingSession, submitSpellingAnswer } from "@/services/spelling-service";
 import { readStorage } from "@/services/storage";
 import { useReviewStore } from "@/stores/review-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -92,6 +94,8 @@ export function ReviewPage() {
   const [submittedAnswer, setSubmittedAnswer] = useState("");
   const [answerChecked, setAnswerChecked] = useState(false);
   const [spellingStage, setSpellingStage] = useState<SpellingStage>("idle");
+  const [postRoundSpellingState, setPostRoundSpellingState] = useState<Awaited<ReturnType<typeof getSpellingSessionState>> | null>(null);
+  const [postRoundSpellingDoneKey, setPostRoundSpellingDoneKey] = useState("");
   const spellingInputRef = useRef<HTMLInputElement | null>(null);
   const item = queue[currentIndex];
   const activeMode = activeSession?.modeSequence?.[activeSession.modeIndex] ?? mode;
@@ -99,12 +103,12 @@ export function ReviewPage() {
   const isSpellingMode = activeMode === "spelling";
 
   useEffect(() => {
-    const active = Boolean(activeSession && item);
+    const active = Boolean((activeSession && item) || postRoundSpellingState);
     document.body.classList.toggle("study-session-active", active);
     return () => {
       document.body.classList.remove("study-session-active");
     };
-  }, [activeSession, item?.id]);
+  }, [activeSession, item?.id, postRoundSpellingState]);
 
   const submitFeedback = async (result: ReviewResult) => {
     if (committing) return;
@@ -128,8 +132,33 @@ export function ReviewPage() {
   }, [hydrate]);
 
   useEffect(() => {
+    getSpellingSessionState("review").then(setPostRoundSpellingState).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     setMode(readStorage<ReviewMode>(DEFAULT_REVIEW_MODE_KEY, "en_to_zh"));
   }, [setMode]);
+
+  useEffect(() => {
+    if (!completedSummary) {
+      setPostRoundSpellingDoneKey("");
+    }
+  }, [completedSummary]);
+
+  useEffect(() => {
+    if (!activeSession) return;
+    setPostRoundSpellingDoneKey("");
+  }, [activeSession?.sessionId]);
+
+  useEffect(() => {
+    const summaryKey = completedSummary?.wordIds?.join("|") || "";
+    if (!summaryKey || postRoundSpellingState || postRoundSpellingDoneKey === summaryKey) return;
+    startSpellingSession("review", completedSummary?.wordIds || [])
+      .then((state) => {
+        if (state) setPostRoundSpellingState(state);
+      })
+      .catch(() => undefined);
+  }, [completedSummary, postRoundSpellingDoneKey, postRoundSpellingState]);
 
   useEffect(() => {
     const handleCloudSync = () => {
@@ -187,6 +216,40 @@ export function ReviewPage() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [activeSession, answerChecked, commitReviewFeedback, committing, hide, isObjectiveMode, pendingResult, submitFeedback, typedAnswer]);
+
+  const postRoundSpellingWord = postRoundSpellingState?.words?.[postRoundSpellingState.snapshot.currentIndex];
+  const postRoundSummaryKey = completedSummary?.wordIds?.join("|") || "";
+
+  if (postRoundSpellingState && postRoundSpellingWord) {
+    return (
+      <SpellingPanel
+        word={postRoundSpellingWord}
+        currentIndex={postRoundSpellingState.snapshot.currentIndex}
+        total={postRoundSpellingState.words.length}
+        accent={accent}
+        sourceLabel="复习完成后拼写"
+        onSubmit={async (answer, options) => {
+          const result = await submitSpellingAnswer("review", answer, options);
+          if ("snapshot" in result && "words" in result && result.snapshot && result.words) {
+            setPostRoundSpellingState({ snapshot: result.snapshot, words: result.words });
+          }
+          return result;
+        }}
+        onExit={() => {
+          abandonSpellingSession("review")
+            .then(() => {
+              setPostRoundSpellingState(null);
+              setPostRoundSpellingDoneKey(postRoundSummaryKey);
+            })
+            .catch(() => undefined);
+        }}
+        onCompleted={() => {
+          setPostRoundSpellingState(null);
+          setPostRoundSpellingDoneKey(postRoundSummaryKey);
+        }}
+      />
+    );
+  }
 
   if (completedSummary) {
     const accuracy = Math.round((completedSummary.remembered / Math.max(completedSummary.total, 1)) * 100);
@@ -360,21 +423,14 @@ export function ReviewPage() {
           setPendingResult(null);
           setSpellingStage("retry_wrong");
         }
-        if (settings.autoPlayPronunciation && normalizedCorrect) {
-          void playPronunciation(item, accent).catch(() => undefined);
-        }
-        if (!normalizedCorrect) {
-          void playPronunciation(item, accent).catch(() => undefined);
-        }
+        void playPronunciation(item, accent).catch(() => undefined);
         return;
       }
 
       if (normalizedCorrect) {
         setPendingResult("remembered");
         setSpellingStage("correct");
-        if (settings.autoPlayPronunciation) {
-          void playPronunciation(item, accent).catch(() => undefined);
-        }
+        void playPronunciation(item, accent).catch(() => undefined);
         return;
       }
 

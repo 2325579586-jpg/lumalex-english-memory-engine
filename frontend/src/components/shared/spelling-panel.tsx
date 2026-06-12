@@ -79,9 +79,9 @@ export function SpellingPanel({
     setSubmitting(true);
     try {
       const result = await onSubmit(answer, { advanceWithoutMastery: stage === "retry_after_hint" });
+      playCurrentWord();
       if (!result.correct) {
         setSubmittedAnswer(answer);
-        playCurrentWord();
         if (stage === "retry_after_hint") {
           setAnswer("");
           setMessage("还差一点。先看正确拼写，再继续拼当前词，拼对后才能进入下一个。");
