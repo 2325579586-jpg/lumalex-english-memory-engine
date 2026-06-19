@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ export function AuthPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const register = useAuthStore((state) => state.register);
   const login = useAuthStore((state) => state.login);
+  const startDemo = useAuthStore((state) => state.startDemo);
   const loading = useAuthStore((state) => state.loading);
 
   const title = useMemo(() => (mode === "register" ? "创建你的学习账号" : "登录继续学习"), [mode]);
@@ -32,6 +34,16 @@ export function AuthPage() {
       await login(username, password);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "操作失败，请稍后重试。");
+    }
+  }
+
+  async function handleStartDemo() {
+    setMessage("");
+    setErrorMessage("");
+    try {
+      await startDemo();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "无法进入本地试用模式，请稍后重试。");
     }
   }
 
@@ -138,6 +150,26 @@ export function AuthPage() {
                 ? "注册完成后会自动回到登录模式。新账号初始没有任何自定义词库，需要你自己创建。"
                 : "如果还没有账号，请切换到注册模式先创建一个。"}
             </p>
+
+            <div className="rounded-3xl border border-primary/25 bg-primary/[0.08] p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold">还不想注册？先看一眼学习流程。</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    本地试用会创建一个仅保存在当前浏览器的演示账号，不会同步到云端。
+                  </p>
+                </div>
+                <Button
+                  variant="secondary"
+                  className="shrink-0"
+                  onClick={() => void handleStartDemo()}
+                  disabled={loading}
+                >
+                  <PlayCircle className="h-4 w-4" />
+                  先试用
+                </Button>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

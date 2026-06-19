@@ -1,5 +1,12 @@
 import { create } from "zustand";
-import { getCurrentSession, loginAccount, logoutAccount, registerAccount, syncLegacyLocalAccountToBackend } from "@/services/auth-service";
+import {
+  getCurrentSession,
+  loginAccount,
+  logoutAccount,
+  registerAccount,
+  startDemoAccount,
+  syncLegacyLocalAccountToBackend,
+} from "@/services/auth-service";
 import type { AuthSession } from "@/types/domain";
 
 type AuthStatus = "unknown" | "authenticated" | "guest";
@@ -11,6 +18,7 @@ type AuthStoreState = {
   hydrate: () => void;
   register: (username: string, password: string) => Promise<void>;
   login: (username: string, password: string) => Promise<void>;
+  startDemo: () => Promise<void>;
   logout: () => void;
 };
 
@@ -46,6 +54,20 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
     set({ loading: true });
     try {
       const session = await loginAccount(username, password);
+      set({
+        session,
+        status: "authenticated",
+        loading: false,
+      });
+    } catch (error) {
+      set({ loading: false });
+      throw error;
+    }
+  },
+  startDemo: async () => {
+    set({ loading: true });
+    try {
+      const session = await startDemoAccount();
       set({
         session,
         status: "authenticated",

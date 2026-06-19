@@ -1,9 +1,8 @@
 import { ArrowLeft, CheckCircle2, Volume2 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { LetterSpellingInput } from "@/components/shared/letter-spelling-input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { focusNativeSpellingInput, nativeSpellingInputProps } from "@/lib/native-spelling-input";
 import { getSpellingMeaningText } from "@/lib/study-text";
 import { playPronunciation } from "@/services/pronunciation-service";
 import type { WordItem } from "@/types/domain";
@@ -36,7 +35,6 @@ export function SpellingPanel({
   const [message, setMessage] = useState<string>("");
   const [submitting, setSubmitting] = useState(false);
   const [stage, setStage] = useState<SpellingStage>("idle");
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const meaningHintText = getSpellingMeaningText(word);
 
   useEffect(() => {
@@ -44,20 +42,18 @@ export function SpellingPanel({
     setSubmittedAnswer("");
     setMessage("");
     setStage("idle");
-    window.setTimeout(() => focusNativeSpellingInput(inputRef.current), 0);
   }, [word.id, currentIndex]);
 
   const playCurrentWord = () => {
     void playPronunciation(word, accent).catch(() => undefined);
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (nextAnswer = answer) => {
     if (stage === "wrong_show_answer") {
       setAnswer("");
       setSubmittedAnswer("");
       setMessage("请重新拼一次。刚才看过答案，本次不计分。");
       setStage("retry_after_hint");
-      window.setTimeout(() => focusNativeSpellingInput(inputRef.current), 0);
       return;
     }
 
@@ -69,19 +65,21 @@ export function SpellingPanel({
       return;
     }
 
-    if (!answer.trim()) {
+    const cleanAnswer = nextAnswer.trim().toLowerCase();
+
+    if (!cleanAnswer) {
       setSubmittedAnswer("未输入");
       setMessage("没关系，先看一遍正确拼写。");
       setStage("wrong_show_answer");
       playCurrentWord();
       return;
     }
+    playCurrentWord();
     setSubmitting(true);
     try {
-      const result = await onSubmit(answer, { advanceWithoutMastery: stage === "retry_after_hint" });
-      playCurrentWord();
+      const result = await onSubmit(cleanAnswer, { advanceWithoutMastery: stage === "retry_after_hint" });
       if (!result.correct) {
-        setSubmittedAnswer(answer);
+        setSubmittedAnswer(cleanAnswer);
         if (stage === "retry_after_hint") {
           setAnswer("");
           setMessage("还差一点。先看正确拼写，再继续拼当前词，拼对后才能进入下一个。");
@@ -134,28 +132,27 @@ export function SpellingPanel({
           <p className="mt-3 text-2xl font-semibold">{meaningHintText}</p>
           <p className="mt-4 text-sm text-muted-foreground">{word.partOfSpeech || word.type}</p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row">
-          <Input
-            {...nativeSpellingInputProps}
-            ref={inputRef}
+        <div className="grid gap-3">
+          <LetterSpellingInput
+            target={word.term}
             value={answer}
-            onChange={(event) => {
-              setAnswer(event.target.value);
+            autoFocusKey={`${word.id}:${currentIndex}:${stage}`}
+            disabled={submitting || stage === "wrong_show_answer" || stage === "correct" || stage === "retry_done_no_score"}
+            status={stage === "wrong_show_answer" ? "error" : stage === "correct" || stage === "retry_done_no_score" ? "success" : "idle"}
+            onChange={(value) => {
+              setAnswer(value);
               if (stage !== "retry_after_hint") {
                 setStage("idle");
               }
               setMessage("");
               setSubmittedAnswer("");
             }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void handleSubmit();
-              }
+            onClear={() => {
+              setAnswer("");
+              setMessage("");
+              setSubmittedAnswer("");
             }}
-            placeholder="请输入完整拼写"
-            disabled={stage === "wrong_show_answer" || stage === "correct" || stage === "retry_done_no_score"}
-            className="h-12 rounded-xl"
+            onComplete={(value) => void handleSubmit(value)}
           />
           <Button variant="secondary" className="h-12 rounded-xl" onClick={playCurrentWord}>
             <Volume2 className="h-4 w-4" />

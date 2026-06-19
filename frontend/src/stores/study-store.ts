@@ -37,6 +37,7 @@ type StudyState = {
   selectedLexiconId: string;
   dailyTarget: number;
   loading: boolean;
+  submitting: boolean;
   error?: string;
   activeSession: ActiveLearnSession | null;
   queue: WordItem[];
@@ -59,12 +60,14 @@ export const useStudyStore = create<StudyState>((set, get) => ({
   selectedLexiconId: readStorage<string>(withUserScopedKey(SELECTED_LEXICON_KEY), "all"),
   dailyTarget: 20,
   loading: false,
+  submitting: false,
   error: undefined,
   activeSession: null,
   queue: [],
   currentIndex: 0,
   completedSummary: null,
   hydrate: async () => {
+    if (get().submitting) return;
     const [decks, existing] = await Promise.all([deckRepository.list(), getLearnSessionState()]);
     const storedSelection = readStorage<string>(withUserScopedKey(SELECTED_LEXICON_KEY), "all");
     const currentSelection = get().selectedLexiconId || storedSelection;
@@ -109,23 +112,34 @@ export const useStudyStore = create<StudyState>((set, get) => ({
   },
   submitFeedback: async (result) => {
     const state = get();
-    if (!state.activeSession) return;
-    const feedbackResult = await submitLearnFeedback(result);
-    if (feedbackResult.completed) {
+    if (!state.activeSession || state.submitting) return;
+    set({ submitting: true, error: undefined });
+    try {
+      const feedbackResult = await submitLearnFeedback(result);
+      if (feedbackResult.completed) {
+        set({
+          submitting: false,
+          activeSession: null,
+          currentIndex: 0,
+          queue: [],
+          completedSummary: feedbackResult.summary,
+        });
+        return;
+      }
+      const restored = await getLearnSessionState();
       set({
-        activeSession: null,
-        currentIndex: 0,
-        queue: [],
-        completedSummary: feedbackResult.summary,
+        submitting: false,
+        activeSession: restored?.snapshot ?? null,
+        queue: restored?.words ?? [],
+        currentIndex: restored?.snapshot?.currentIndex ?? 0,
       });
-      return;
+    } catch (error) {
+      set({
+        submitting: false,
+        error: error instanceof Error ? error.message : "提交学习反馈失败",
+      });
+      throw error;
     }
-    const restored = await getLearnSessionState();
-    set({
-      activeSession: restored?.snapshot ?? null,
-      queue: restored?.words ?? [],
-      currentIndex: restored?.snapshot?.currentIndex ?? 0,
-    });
   },
   skipCurrent: async () => {
     await skipCurrentLearnWord();

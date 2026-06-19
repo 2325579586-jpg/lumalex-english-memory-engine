@@ -19,6 +19,7 @@ type ReviewSummary = {
 
 type ReviewStoreState = {
   loading: boolean;
+  submitting: boolean;
   error?: string;
   mode: ReviewMode;
   revealed: boolean;
@@ -39,6 +40,7 @@ type ReviewStoreState = {
 
 export const useReviewStore = create<ReviewStoreState>((set, get) => ({
   loading: false,
+  submitting: false,
   error: undefined,
   mode: "en_to_zh",
   revealed: false,
@@ -47,6 +49,7 @@ export const useReviewStore = create<ReviewStoreState>((set, get) => ({
   activeSession: null,
   completedSummary: null,
   hydrate: async () => {
+    if (get().submitting) return;
     const existing = await getReviewSessionState();
     set({
       activeSession: existing?.snapshot ?? null,
@@ -76,34 +79,57 @@ export const useReviewStore = create<ReviewStoreState>((set, get) => ({
     }
   },
   submitFeedback: async (result) => {
-    const payload = await submitReviewFeedback(result);
-    if (payload.completed) {
+    if (get().submitting) return;
+    set({ submitting: true, error: undefined });
+    try {
+      const payload = await submitReviewFeedback(result);
+      if (payload.completed) {
+        set({
+          submitting: false,
+          activeSession: null,
+          queue: [],
+          currentIndex: 0,
+          completedSummary: payload.summary,
+          revealed: false,
+        });
+        return;
+      }
+      const restored = await getReviewSessionState();
       set({
-        activeSession: null,
-        queue: [],
-        currentIndex: 0,
-        completedSummary: payload.summary,
+        submitting: false,
+        activeSession: restored?.snapshot ?? null,
+        queue: restored?.words ?? [],
+        currentIndex: restored?.snapshot?.currentIndex ?? 0,
         revealed: false,
       });
-      return;
+    } catch (error) {
+      set({
+        submitting: false,
+        error: error instanceof Error ? error.message : "提交复习反馈失败",
+      });
+      throw error;
     }
-    const restored = await getReviewSessionState();
-    set({
-      activeSession: restored?.snapshot ?? null,
-      queue: restored?.words ?? [],
-      currentIndex: restored?.snapshot?.currentIndex ?? 0,
-      revealed: false,
-    });
   },
   postpone: async () => {
-    await postponeReviewWord();
-    const restored = await getReviewSessionState();
-    set({
-      activeSession: restored?.snapshot ?? null,
-      queue: restored?.words ?? [],
-      currentIndex: restored?.snapshot?.currentIndex ?? 0,
-      revealed: false,
-    });
+    if (get().submitting) return;
+    set({ submitting: true, error: undefined });
+    try {
+      await postponeReviewWord();
+      const restored = await getReviewSessionState();
+      set({
+        submitting: false,
+        activeSession: restored?.snapshot ?? null,
+        queue: restored?.words ?? [],
+        currentIndex: restored?.snapshot?.currentIndex ?? 0,
+        revealed: false,
+      });
+    } catch (error) {
+      set({
+        submitting: false,
+        error: error instanceof Error ? error.message : "稍后复习失败",
+      });
+      throw error;
+    }
   },
   abandonSession: async () => {
     await abandonReviewSession();

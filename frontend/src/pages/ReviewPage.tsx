@@ -1,6 +1,7 @@
 import { ArrowLeft, Clock3, Volume2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { LetterSpellingInput } from "@/components/shared/letter-spelling-input";
 import { SpellingPanel } from "@/components/shared/spelling-panel";
 import { StudyDetailTabs } from "@/components/shared/study-detail-tabs";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +73,7 @@ export function ReviewPage() {
     mode,
     revealed,
     loading,
+    submitting: storeSubmitting,
     error,
     queue,
     currentIndex,
@@ -101,6 +103,7 @@ export function ReviewPage() {
   const activeMode = activeSession?.modeSequence?.[activeSession.modeIndex] ?? mode;
   const isObjectiveMode = activeMode === "spelling" || activeMode === "cloze";
   const isSpellingMode = activeMode === "spelling";
+  const actionPending = committing || storeSubmitting;
 
   useEffect(() => {
     const active = Boolean((activeSession && item) || postRoundSpellingState);
@@ -111,7 +114,7 @@ export function ReviewPage() {
   }, [activeSession, item?.id, postRoundSpellingState]);
 
   const submitFeedback = async (result: ReviewResult) => {
-    if (committing) return;
+    if (actionPending) return;
     setPendingResult(result);
     reveal();
     if (settings.autoPlayPronunciation && item) {
@@ -178,9 +181,9 @@ export function ReviewPage() {
   }, [activeMode, item?.id, activeSession?.round, hide]);
 
   useEffect(() => {
-    if (!activeSession || !item || !isObjectiveMode || revealed || answerChecked) return;
+    if (!activeSession || !item || !isObjectiveMode || isSpellingMode || revealed || answerChecked) return;
     window.setTimeout(() => focusNativeSpellingInput(spellingInputRef.current), 0);
-  }, [activeSession, answerChecked, activeMode, isObjectiveMode, item?.id, revealed]);
+  }, [activeSession, answerChecked, activeMode, isObjectiveMode, isSpellingMode, item?.id, revealed]);
 
   useEffect(() => {
     if (activeMode !== "audio" || !item || revealed) return;
@@ -201,7 +204,7 @@ export function ReviewPage() {
       if ((!isObjectiveMode || answerChecked) && event.key === "1") submitFeedback("remembered").catch(() => undefined);
       if ((!isObjectiveMode || answerChecked) && event.key === "2") submitFeedback("hesitant").catch(() => undefined);
       if ((!isObjectiveMode || answerChecked) && event.key === "3") submitFeedback("forgot").catch(() => undefined);
-      if (event.key.toLowerCase() === "n" && pendingResult && !committing) {
+      if (event.key.toLowerCase() === "n" && pendingResult && !actionPending) {
         const selected = pendingResult;
         setCommitting(true);
         commitReviewFeedback(selected)
@@ -215,7 +218,7 @@ export function ReviewPage() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeSession, answerChecked, commitReviewFeedback, committing, hide, isObjectiveMode, pendingResult, submitFeedback, typedAnswer]);
+  }, [activeSession, actionPending, answerChecked, commitReviewFeedback, hide, isObjectiveMode, pendingResult, submitFeedback, typedAnswer]);
 
   const postRoundSpellingWord = postRoundSpellingState?.words?.[postRoundSpellingState.snapshot.currentIndex];
   const postRoundSummaryKey = completedSummary?.wordIds?.join("|") || "";
@@ -385,7 +388,7 @@ export function ReviewPage() {
             : "先回忆中文含义，再判断掌握程度。";
 
   const commitAndNext = async () => {
-    if (!pendingResult || committing) return;
+    if (!pendingResult || actionPending) return;
     setCommitting(true);
     try {
       await commitReviewFeedback(pendingResult);
@@ -400,10 +403,10 @@ export function ReviewPage() {
     }
   };
 
-  function checkTypedAnswer() {
-    const normalizedCorrect = normalizeSpellingAnswer(typedAnswer) === normalizeSpellingAnswer(item.term);
+  function checkTypedAnswer(answerOverride = typedAnswer) {
+    const cleanAnswer = answerOverride.trim().toLowerCase();
+    const normalizedCorrect = normalizeSpellingAnswer(cleanAnswer) === normalizeSpellingAnswer(item.term);
     if (isSpellingMode) {
-      const cleanAnswer = typedAnswer.trim();
       setSubmittedAnswer(cleanAnswer || "未输入");
       setAnswerChecked(true);
       reveal();
@@ -439,7 +442,7 @@ export function ReviewPage() {
       void playPronunciation(item, accent).catch(() => undefined);
       return;
     }
-    if (!typedAnswer.trim()) return;
+    if (!cleanAnswer) return;
     setAnswerChecked(true);
     setPendingResult(normalizedCorrect ? "remembered" : "forgot");
     reveal();
@@ -495,7 +498,7 @@ export function ReviewPage() {
               : "";
   const spellingFeedbackIsPositive = spellingStage === "correct" || spellingStage === "retry_correct_no_score";
   const spellingPrimaryDisabled =
-    committing ||
+    actionPending ||
     (spellingStage === "correct" && !pendingResult) ||
     (spellingStage === "retry_correct_no_score" && !pendingResult);
 
@@ -520,6 +523,7 @@ export function ReviewPage() {
               type="button"
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-border/70 bg-panel/60 text-muted-foreground transition hover:text-foreground"
               title="稍后再出现"
+              disabled={actionPending}
               onClick={() => postpone().catch(() => undefined)}
             >
               <Clock3 className="h-4 w-4" />
@@ -625,32 +629,65 @@ export function ReviewPage() {
 
             {isObjectiveMode ? (
               <div className="mt-4 w-full space-y-3">
-                <Input
-                  {...nativeSpellingInputProps}
-                  ref={spellingInputRef}
-                  key={`${item.id}:${activeSession?.round || 1}:${activeMode}`}
-                  value={typedAnswer}
-                  onChange={(event) => {
-                    setTypedAnswer(event.target.value);
-                    setAnswerChecked(false);
-                    setPendingResult(null);
-                    setSubmittedAnswer("");
-                    if (isSpellingMode && spellingStage !== "retry_after_hint") {
-                      setSpellingStage("idle");
+                {isSpellingMode ? (
+                  <LetterSpellingInput
+                    target={item.term}
+                    value={typedAnswer}
+                    autoFocusKey={`${item.id}:${activeSession?.round || 1}:${activeMode}:${spellingStage}`}
+                    disabled={
+                      actionPending ||
+                      spellingStage === "correct" ||
+                      spellingStage === "wrong_show_answer" ||
+                      spellingStage === "retry_correct_no_score" ||
+                      spellingStage === "retry_wrong"
                     }
-                    hide();
-                  }}
-                  placeholder={activeMode === "cloze" ? "填写例句中的空格" : "输入英文单词"}
-                  disabled={
-                    committing ||
-                    (isSpellingMode &&
-                      (spellingStage === "correct" ||
-                        spellingStage === "wrong_show_answer" ||
-                        spellingStage === "retry_correct_no_score" ||
-                        spellingStage === "retry_wrong"))
-                  }
-                  className="h-11 rounded-full text-center text-lg"
-                />
+                    status={
+                      spellingStage === "wrong_show_answer" || spellingStage === "retry_wrong"
+                        ? "error"
+                        : spellingStage === "correct" || spellingStage === "retry_correct_no_score"
+                          ? "success"
+                          : "idle"
+                    }
+                    onChange={(value) => {
+                      setTypedAnswer(value);
+                      setAnswerChecked(false);
+                      setPendingResult(null);
+                      setSubmittedAnswer("");
+                      if (spellingStage !== "retry_after_hint") {
+                        setSpellingStage("idle");
+                      }
+                      hide();
+                    }}
+                    onClear={() => {
+                      setTypedAnswer("");
+                      setAnswerChecked(false);
+                      setPendingResult(null);
+                      setSubmittedAnswer("");
+                      if (spellingStage !== "retry_after_hint") {
+                        setSpellingStage("idle");
+                      }
+                      hide();
+                    }}
+                    onComplete={(value) => checkTypedAnswer(value)}
+                  />
+                ) : (
+                  <Input
+                    {...nativeSpellingInputProps}
+                    ref={spellingInputRef}
+                    key={`${item.id}:${activeSession?.round || 1}:${activeMode}`}
+                    value={typedAnswer}
+                    onChange={(event) => {
+                      setTypedAnswer(event.target.value);
+                      setAnswerChecked(false);
+                      setPendingResult(null);
+                      setSubmittedAnswer("");
+                      hide();
+                    }}
+                    placeholder="填写例句中的空格"
+                    disabled={actionPending}
+                    className="h-11 rounded-full text-center text-lg"
+                  />
+                )}
                 {answerChecked ? (
                   <div
                     className={cn(
@@ -693,10 +730,10 @@ export function ReviewPage() {
         <footer className="border-t border-border/70 bg-card/95 px-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:px-5">
           {isSpellingMode ? (
             <Button className="h-11 w-full rounded-2xl" disabled={spellingPrimaryDisabled} onClick={handleSpellingPrimaryAction}>
-              {committing ? "提交中..." : spellingPrimaryLabel}
+              {actionPending ? "提交中..." : spellingPrimaryLabel}
             </Button>
           ) : isObjectiveMode && !revealed ? (
-            <Button className="h-11 w-full rounded-2xl" disabled={!typedAnswer.trim() || committing || answerChecked} onClick={checkTypedAnswer}>
+            <Button className="h-11 w-full rounded-2xl" disabled={!typedAnswer.trim() || actionPending || answerChecked} onClick={() => checkTypedAnswer()}>
               检查答案
             </Button>
           ) : !revealed ? (
@@ -706,7 +743,7 @@ export function ReviewPage() {
                   key={option.value}
                   variant="outline"
                   className="h-11 rounded-2xl border-border/80 bg-panel/[0.55] px-2 text-sm"
-                  disabled={committing}
+                  disabled={actionPending}
                   onClick={() => submitFeedback(option.value).catch(() => undefined)}
                 >
                   {option.label}
@@ -718,7 +755,7 @@ export function ReviewPage() {
               <Button
                 variant="secondary"
                 className="h-11 rounded-2xl"
-                disabled={committing}
+                disabled={actionPending}
                 onClick={() => {
                   setPendingResult("forgot");
                   reveal();
@@ -726,8 +763,8 @@ export function ReviewPage() {
               >
                 记错了
               </Button>
-              <Button className="h-11 rounded-2xl" disabled={!pendingResult || committing} onClick={() => commitAndNext().catch(() => undefined)}>
-                {committing ? "提交中..." : "下一词"}
+              <Button className="h-11 rounded-2xl" disabled={!pendingResult || actionPending} onClick={() => commitAndNext().catch(() => undefined)}>
+                {actionPending ? "提交中..." : "下一词"}
               </Button>
             </div>
           )}

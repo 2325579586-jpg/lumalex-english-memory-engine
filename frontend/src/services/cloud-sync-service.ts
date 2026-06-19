@@ -295,7 +295,9 @@ function currentUserId() {
 }
 
 function currentSyncToken() {
-  return getAuthSession()?.syncToken || null;
+  const token = getAuthSession()?.syncToken || null;
+  if (token?.startsWith("local-demo")) return null;
+  return token;
 }
 
 function getSnapshotTimestamp(snapshot: unknown) {

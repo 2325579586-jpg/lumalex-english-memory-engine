@@ -1,12 +1,18 @@
 import {
   ArrowLeft,
+  ArrowRight,
+  BookMarked,
   BookOpen,
   ChevronRight,
+  Flag,
+  GraduationCap,
   LayoutGrid,
   ListFilter,
   PencilLine,
   Plus,
+  Route,
   Search,
+  Sparkles,
   TableProperties,
   Trash2,
 } from "lucide-react";
@@ -29,6 +35,55 @@ import { useSettingsStore } from "@/stores/settings-store";
 import type { Deck, LibraryFilters, WordItem, WordStatus } from "@/types/domain";
 
 const PAGE_SIZE = 20;
+
+type ExamPath = {
+  id: string;
+  title: string;
+  audience: string;
+  promise: string;
+  cadence: string;
+  keywords: string[];
+  fallbackKeywords: string[];
+};
+
+const EXAM_PATHS: ExamPath[] = [
+  {
+    id: "junior",
+    title: "初中基础",
+    audience: "七到九年级，先补课本和日常高频词",
+    promise: "从熟词、短语和拼写开始，降低第一次打开应用的压力。",
+    cadence: "每天 12 个新词，加 8 分钟复习",
+    keywords: ["初中", "中考", "daily", "日常", "基础"],
+    fallbackKeywords: ["daily", "基础", "四级"],
+  },
+  {
+    id: "gaokao",
+    title: "高中与高考",
+    audience: "高中生，需要阅读、完形和作文词汇",
+    promise: "优先覆盖考试文章里的高频动词、形容词和常见搭配。",
+    cadence: "每天 18 个新词，加 15 分钟复习",
+    keywords: ["高中", "高考", "四级", "cet4"],
+    fallbackKeywords: ["cet4", "四级", "daily"],
+  },
+  {
+    id: "college",
+    title: "大学四六级",
+    audience: "大一到大四，准备 CET4 或 CET6",
+    promise: "把四六级高频词拆成可复习的小块，减少临考突击。",
+    cadence: "每天 24 个新词，加 20 分钟复习",
+    keywords: ["cet4", "cet6", "四级", "六级"],
+    fallbackKeywords: ["cet4", "cet6", "四级", "六级"],
+  },
+  {
+    id: "ielts-toefl",
+    title: "雅思托福桥接",
+    audience: "计划出国考试，先建立学术词汇底盘",
+    promise: "专门词库上线前，可先用六级词汇补齐阅读和听力基础。",
+    cadence: "每天 20 个新词，加 2 组拼写复习",
+    keywords: ["雅思", "托福", "ielts", "toefl", "六级", "cet6"],
+    fallbackKeywords: ["cet6", "六级", "cet4"],
+  },
+];
 
 function formatStatus(status: WordStatus) {
   const map: Record<WordStatus, string> = {
@@ -72,6 +127,13 @@ function getDeckTone(deck: Deck) {
 function getVisiblePages(page: number, totalPages: number) {
   const start = Math.max(1, Math.min(page - 2, totalPages - 4));
   return Array.from({ length: Math.min(5, totalPages) }, (_, index) => start + index);
+}
+
+function matchDeckByKeywords(decks: Deck[], keywords: string[]) {
+  return decks.find((deck) => {
+    const text = `${deck.id} ${deck.name} ${deck.description}`.toLowerCase();
+    return keywords.some((keyword) => text.includes(keyword.toLowerCase()));
+  });
 }
 
 async function syncDeckCounts(deckIds: string[]) {
@@ -145,6 +207,23 @@ export function LibraryPage() {
       deckCount: decks.length,
     }),
     [decks.length, overviewWords],
+  );
+
+  const examPathCards = useMemo(
+    () =>
+      EXAM_PATHS.map((path) => {
+        const matchedDeck = matchDeckByKeywords(decks, path.keywords) || matchDeckByKeywords(decks, path.fallbackKeywords);
+        const stats = matchedDeck
+          ? deckStats.get(matchedDeck.id) || {
+              total: matchedDeck.totalCount,
+              due: 0,
+              unseen: 0,
+              mastered: 0,
+            }
+          : null;
+        return { ...path, matchedDeck, stats };
+      }),
+    [deckStats, decks],
   );
 
   const filteredDecks = useMemo(() => {
@@ -346,6 +425,14 @@ export function LibraryPage() {
     setSelectedIds((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
   }
 
+  function handleOpenExamPath(path: (typeof examPathCards)[number]) {
+    if (path.matchedDeck) {
+      navigate(`/library/${path.matchedDeck.id}`);
+      return;
+    }
+    setDeckSearch(path.keywords.slice(0, 2).join(" "));
+  }
+
   function renderDeckCard(deck: Deck) {
     const stats = deckStats.get(deck.id) || {
       total: deck.totalCount,
@@ -429,23 +516,52 @@ export function LibraryPage() {
   if (!isDeckDetail) {
     return (
       <div className="space-y-6">
-        <Card>
-          <CardContent className="flex flex-col gap-6 p-5 sm:p-6 xl:flex-row xl:items-center xl:justify-between">
-            <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-muted">词库中心</p>
-              <h1 className="mt-2 text-2xl font-semibold sm:text-3xl">先选择一个词库，再进入词条列表。</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                这里保留词库级别的概览和管理动作，具体单词会进入对应词库后分页显示。
+        <Card className="overflow-hidden">
+          <CardContent className="relative grid gap-6 p-5 sm:p-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-center">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="default">词库中心</Badge>
+                <Badge variant="muted">初中 高中 四六级 雅思托福</Badge>
+              </div>
+              <h1 className="mt-4 text-2xl font-semibold leading-tight sm:text-4xl">
+                先选考试目标，再开始今天这一组词。
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+                LumaLex 会把系统词库、自定义词库和复习状态放在同一页。新用户可以按目标直接进词库，老用户可以继续管理自己的错词和阅读摘词。
               </p>
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                <Button onClick={() => navigate("/learn")}>
+                  <BookOpen className="h-4 w-4" />
+                  开始学习
+                </Button>
+                <Button variant="secondary" onClick={() => navigate("/review")}>
+                  <Route className="h-4 w-4" />
+                  处理复习
+                </Button>
+              </div>
             </div>
-            <div className="relative w-full sm:w-[320px]">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-              <Input
-                className="pl-10"
-                placeholder="搜索词库名称或描述"
-                value={deckSearch}
-                onChange={(event) => setDeckSearch(event.target.value)}
-              />
+            <div className="grid gap-3 rounded-[1.35rem] border border-border/70 bg-panel/60 p-4 sm:grid-cols-3 xl:grid-cols-1">
+              <div className="rounded-2xl bg-white/[0.045] p-4">
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <BookMarked className="h-4 w-4 text-primary" />
+                  词库数量
+                </p>
+                <strong className="mt-2 block text-3xl">{overviewSummary.deckCount}</strong>
+              </div>
+              <div className="rounded-2xl bg-white/[0.045] p-4">
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <GraduationCap className="h-4 w-4 text-primary" />
+                  总词条
+                </p>
+                <strong className="mt-2 block text-3xl">{overviewSummary.totalWords}</strong>
+              </div>
+              <div className="rounded-2xl bg-white/[0.045] p-4">
+                <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Flag className="h-4 w-4 text-primary" />
+                  待复习与薄弱
+                </p>
+                <strong className="mt-2 block text-3xl">{overviewSummary.dueCount}</strong>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -463,30 +579,61 @@ export function LibraryPage() {
           </div>
         )}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-3xl border border-border/70 bg-panel/60 p-5">
-            <p className="text-sm text-muted-foreground">词库数量</p>
-            <strong className="mt-3 block text-3xl">{overviewSummary.deckCount}</strong>
-          </div>
-          <div className="rounded-3xl border border-border/70 bg-panel/60 p-5">
-            <p className="text-sm text-muted-foreground">总词条</p>
-            <strong className="mt-3 block text-3xl">{overviewSummary.totalWords}</strong>
-          </div>
-          <div className="rounded-3xl border border-border/70 bg-panel/60 p-5">
-            <p className="text-sm text-muted-foreground">待学习</p>
-            <strong className="mt-3 block text-3xl">{overviewSummary.unseenCount}</strong>
-          </div>
-          <div className="rounded-3xl border border-border/70 bg-panel/60 p-5">
-            <p className="text-sm text-muted-foreground">待复习 / 薄弱</p>
-            <strong className="mt-3 block text-3xl">{overviewSummary.dueCount}</strong>
-          </div>
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {examPathCards.map((path) => (
+            <button
+              key={path.id}
+              type="button"
+              onClick={() => handleOpenExamPath(path)}
+              className="group flex min-h-[260px] flex-col rounded-[1.35rem] border border-border/70 bg-panel/60 p-5 text-left transition-all hover:-translate-y-0.5 hover:border-primary/40 hover:bg-panel/80"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <Badge variant={path.matchedDeck ? "success" : "warning"}>
+                    {path.matchedDeck ? "已匹配词库" : "等待专门词库"}
+                  </Badge>
+                  <h2 className="mt-4 text-xl font-semibold">{path.title}</h2>
+                </div>
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-primary-foreground">
+                  <ArrowRight className="h-4 w-4" />
+                </span>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-muted-foreground">{path.audience}</p>
+              <p className="mt-3 text-sm leading-6">{path.promise}</p>
+              <div className="mt-auto space-y-3 pt-5">
+                <div className="rounded-2xl border border-border/70 bg-white/[0.04] p-3">
+                  <p className="text-xs text-muted-foreground">建议节奏</p>
+                  <p className="mt-1 text-sm font-semibold">{path.cadence}</p>
+                </div>
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <span className="truncate text-muted-foreground">
+                    {path.matchedDeck ? path.matchedDeck.name : "先创建或导入目标词库"}
+                  </span>
+                  <strong className="shrink-0 text-foreground">{path.stats?.total || 0} 词</strong>
+                </div>
+              </div>
+            </button>
+          ))}
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[1fr_0.82fr]">
           <Card>
             <CardHeader>
-              <CardTitle>选择词库</CardTitle>
-              <CardDescription>点击一个词库后，会进入该词库的分页词条页。</CardDescription>
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <CardTitle>全部词库</CardTitle>
+                  <CardDescription>找不到目标考试时，可以搜索词库名称或描述。</CardDescription>
+                </div>
+                <div className="relative w-full xl:w-[320px]">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+                  <Input
+                    className="pl-10"
+                    placeholder="搜索词库名称或描述"
+                    value={deckSearch}
+                    onChange={(event) => setDeckSearch(event.target.value)}
+                  />
+                </div>
+              </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div>
@@ -520,15 +667,22 @@ export function LibraryPage() {
             <Card>
               <CardHeader>
                 <CardTitle>新建自定义词库</CardTitle>
-                <CardDescription>把面试、阅读、错题等主题分开放，会更容易复习。</CardDescription>
+                <CardDescription>给雅思、托福、教材同步词或错题词单单独建库，会更容易持续复习。</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                <div className="rounded-2xl border border-primary/20 bg-primary/10 p-4 text-sm leading-6 text-muted-foreground">
+                  <div className="mb-2 flex items-center gap-2 font-semibold text-foreground">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    增长建议
+                  </div>
+                  适合分享的词库名称通常很具体，比如“高考 3500 易混词”“雅思阅读同义替换”“托福听力场景词”。
+                </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">词库名称</label>
                   <Input
                     value={newDeckName}
                     onChange={(event) => setNewDeckName(event.target.value)}
-                    placeholder="例如：面试英语 / 我的易错词"
+                    placeholder="例如：雅思阅读同义替换 / 我的易错词"
                   />
                 </div>
                 <div className="space-y-2">

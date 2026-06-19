@@ -173,6 +173,7 @@ async function migrateLocalUserData(fromUserId: string, toUserId: string) {
 }
 
 export async function syncLegacyLocalAccountToBackend(userId: string) {
+  if (userId === "local-demo-user") return getAuthSession();
   const localUser = await userRepository.getById(userId);
   if (!localUser) return null;
 
@@ -189,6 +190,7 @@ export async function syncLegacyLocalAccountToBackend(userId: string) {
 export async function syncCurrentLocalAccountToBackend() {
   const session = getAuthSession();
   if (!session) return null;
+  if (session.syncToken?.startsWith("local-demo")) return session;
 
   const [currentUser, usernameUser] = await Promise.all([
     userRepository.getById(session.userId),
@@ -288,6 +290,21 @@ export async function loginAccount(username: string, password: string) {
 
 export function logoutAccount() {
   clearAuthSession();
+}
+
+export async function startDemoAccount() {
+  const now = Date.now();
+  const userId = "local-demo-user";
+  const username = "demo-student";
+  await ensureLocalUser(userId, username, "local-demo-password-hash");
+  const session: AuthSession = {
+    userId,
+    username,
+    syncToken: "local-demo-session",
+    loggedInAt: now,
+  };
+  setAuthSession(session);
+  return session;
 }
 
 export function getCurrentSession() {

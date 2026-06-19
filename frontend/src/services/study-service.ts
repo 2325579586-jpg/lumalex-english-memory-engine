@@ -115,6 +115,19 @@ async function loadWords(wordIds: string[]) {
   return words.filter(Boolean) as WordItem[];
 }
 
+function reconcileLearnCurrentIndex(snapshot: ActiveLearnSession, nextWordIds: string[]) {
+  if (!nextWordIds.length) return 0;
+  const nextWordIdSet = new Set(nextWordIds);
+  const currentWordId = snapshot.wordIds[snapshot.currentIndex];
+  const currentIndex = currentWordId ? nextWordIds.indexOf(currentWordId) : -1;
+  if (currentIndex >= 0) return currentIndex;
+
+  const nextOriginalWordId = snapshot.wordIds.find((wordId, index) => index > snapshot.currentIndex && nextWordIdSet.has(wordId));
+  if (nextOriginalWordId) return nextWordIds.indexOf(nextOriginalWordId);
+
+  return 0;
+}
+
 export async function getLearnSessionState() {
   const snapshot = getStoredSession();
   if (!snapshot) {
@@ -131,10 +144,11 @@ export async function getLearnSessionState() {
 
   if (learnableWords.length !== snapshot.wordIds.length || snapshot.currentIndex >= learnableWords.length) {
     const now = Date.now();
+    const nextWordIds = learnableWords.map((word) => word.id);
     const nextSnapshot: ActiveLearnSession = {
       ...snapshot,
-      wordIds: learnableWords.map((word) => word.id),
-      currentIndex: Math.min(snapshot.currentIndex, learnableWords.length - 1),
+      wordIds: nextWordIds,
+      currentIndex: reconcileLearnCurrentIndex(snapshot, nextWordIds),
       updatedAt: now,
     };
     saveStoredSession(nextSnapshot);

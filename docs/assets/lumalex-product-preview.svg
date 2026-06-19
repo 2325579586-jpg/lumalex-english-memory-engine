@@ -1,0 +1,88 @@
+<svg width="1200" height="675" viewBox="0 0 1200 675" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">LumaLex product preview</title>
+  <desc id="desc">A preview board showing the LumaLex vocabulary app library, study, and review workflow.</desc>
+  <rect width="1200" height="675" rx="32" fill="#07100D"/>
+  <rect x="1" y="1" width="1198" height="673" rx="31" stroke="#233831"/>
+  <path d="M0 0H1200V675H0V0Z" fill="url(#bg)"/>
+  <circle cx="1040" cy="84" r="206" fill="#6CA488" fill-opacity="0.18"/>
+  <circle cx="162" cy="626" r="256" fill="#D39C5C" fill-opacity="0.13"/>
+  <rect x="60" y="56" width="1080" height="563" rx="28" fill="#101816" fill-opacity="0.92" stroke="#2E463F"/>
+  <rect x="90" y="86" width="188" height="503" rx="24" fill="#0B1210" stroke="#263B35"/>
+  <rect x="118" y="120" width="48" height="48" rx="16" fill="#6CA488"/>
+  <text x="132" y="150" fill="#06100B" font-family="Arial, sans-serif" font-size="17" font-weight="800">LL</text>
+  <text x="181" y="137" fill="#EAF1ED" font-family="Arial, sans-serif" font-size="20" font-weight="700">LumaLex</text>
+  <text x="181" y="158" fill="#83958E" font-family="Arial, sans-serif" font-size="11" letter-spacing="2">MEMORY SYSTEM</text>
+  <rect x="118" y="211" width="132" height="34" rx="12" fill="#17231F"/>
+  <rect x="118" y="259" width="132" height="34" rx="12" fill="#6CA488" fill-opacity="0.22" stroke="#6CA488" stroke-opacity="0.45"/>
+  <rect x="118" y="307" width="132" height="34" rx="12" fill="#17231F"/>
+  <rect x="118" y="379" width="132" height="34" rx="12" fill="#17231F"/>
+  <rect x="118" y="427" width="132" height="34" rx="12" fill="#17231F"/>
+  <text x="142" y="233" fill="#C9D7D1" font-family="Arial, sans-serif" font-size="14">Dashboard</text>
+  <text x="142" y="281" fill="#EAF1ED" font-family="Arial, sans-serif" font-size="14" font-weight="700">Library</text>
+  <text x="142" y="329" fill="#C9D7D1" font-family="Arial, sans-serif" font-size="14">Review</text>
+  <text x="142" y="401" fill="#C9D7D1" font-family="Arial, sans-serif" font-size="14">Add words</text>
+  <text x="142" y="449" fill="#C9D7D1" font-family="Arial, sans-serif" font-size="14">Stats</text>
+  <rect x="308" y="86" width="802" height="126" rx="24" fill="#14201C" stroke="#2F4941"/>
+  <rect x="334" y="111" width="96" height="28" rx="10" fill="#6CA488" fill-opacity="0.18" stroke="#6CA488" stroke-opacity="0.45"/>
+  <text x="352" y="130" fill="#8FD0B2" font-family="Arial, sans-serif" font-size="12" font-weight="700">Library</text>
+  <text x="334" y="169" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="34" font-weight="800">Choose a goal, then learn today's words.</text>
+  <text x="336" y="196" fill="#AEC0B8" font-family="Arial, sans-serif" font-size="15">Exam paths, spaced review, pronunciation, spelling, cloze, and word relations in one focused workflow.</text>
+  <rect x="892" y="118" width="82" height="58" rx="18" fill="#0D1512" stroke="#2D443D"/>
+  <text x="913" y="144" fill="#83958E" font-family="Arial, sans-serif" font-size="12">Decks</text>
+  <text x="923" y="166" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="22" font-weight="800">4</text>
+  <rect x="992" y="118" width="82" height="58" rx="18" fill="#0D1512" stroke="#2D443D"/>
+  <text x="1009" y="144" fill="#83958E" font-family="Arial, sans-serif" font-size="12">Due</text>
+  <text x="1020" y="166" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="22" font-weight="800">31</text>
+  <g>
+    <rect x="308" y="237" width="184" height="176" rx="24" fill="#0F1815" stroke="#2E463F"/>
+    <rect x="330" y="259" width="76" height="26" rx="9" fill="#6CA488" fill-opacity="0.16"/>
+    <text x="344" y="277" fill="#8FD0B2" font-family="Arial, sans-serif" font-size="11" font-weight="700">Matched</text>
+    <text x="330" y="317" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="23" font-weight="800">Junior</text>
+    <text x="330" y="347" fill="#AEC0B8" font-family="Arial, sans-serif" font-size="14">12 new words daily</text>
+    <rect x="330" y="371" width="138" height="18" rx="9" fill="#21362F"/>
+    <rect x="330" y="371" width="74" height="18" rx="9" fill="#6CA488"/>
+  </g>
+  <g>
+    <rect x="513" y="237" width="184" height="176" rx="24" fill="#0F1815" stroke="#2E463F"/>
+    <rect x="535" y="259" width="76" height="26" rx="9" fill="#6CA488" fill-opacity="0.16"/>
+    <text x="549" y="277" fill="#8FD0B2" font-family="Arial, sans-serif" font-size="11" font-weight="700">Matched</text>
+    <text x="535" y="317" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="23" font-weight="800">Gaokao</text>
+    <text x="535" y="347" fill="#AEC0B8" font-family="Arial, sans-serif" font-size="14">18 new words daily</text>
+    <rect x="535" y="371" width="138" height="18" rx="9" fill="#21362F"/>
+    <rect x="535" y="371" width="92" height="18" rx="9" fill="#6CA488"/>
+  </g>
+  <g>
+    <rect x="718" y="237" width="184" height="176" rx="24" fill="#0F1815" stroke="#2E463F"/>
+    <rect x="740" y="259" width="76" height="26" rx="9" fill="#6CA488" fill-opacity="0.16"/>
+    <text x="754" y="277" fill="#8FD0B2" font-family="Arial, sans-serif" font-size="11" font-weight="700">Matched</text>
+    <text x="740" y="317" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="23" font-weight="800">CET 4/6</text>
+    <text x="740" y="347" fill="#AEC0B8" font-family="Arial, sans-serif" font-size="14">24 new words daily</text>
+    <rect x="740" y="371" width="138" height="18" rx="9" fill="#21362F"/>
+    <rect x="740" y="371" width="105" height="18" rx="9" fill="#6CA488"/>
+  </g>
+  <g>
+    <rect x="923" y="237" width="187" height="176" rx="24" fill="#0F1815" stroke="#2E463F"/>
+    <rect x="945" y="259" width="92" height="26" rx="9" fill="#D39C5C" fill-opacity="0.17"/>
+    <text x="958" y="277" fill="#E7B979" font-family="Arial, sans-serif" font-size="11" font-weight="700">Bridge</text>
+    <text x="945" y="317" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="23" font-weight="800">IELTS TOEFL</text>
+    <text x="945" y="347" fill="#AEC0B8" font-family="Arial, sans-serif" font-size="14">Academic vocabulary</text>
+    <rect x="945" y="371" width="138" height="18" rx="9" fill="#21362F"/>
+    <rect x="945" y="371" width="62" height="18" rx="9" fill="#D39C5C"/>
+  </g>
+  <rect x="308" y="438" width="390" height="122" rx="24" fill="#0F1815" stroke="#2E463F"/>
+  <text x="332" y="471" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="22" font-weight="800">Active recall review</text>
+  <text x="332" y="500" fill="#AEC0B8" font-family="Arial, sans-serif" font-size="15">Answer first, reveal later, then schedule the next encounter.</text>
+  <rect x="332" y="523" width="80" height="20" rx="10" fill="#6CA488"/>
+  <rect x="424" y="523" width="80" height="20" rx="10" fill="#D39C5C"/>
+  <rect x="516" y="523" width="80" height="20" rx="10" fill="#324B43"/>
+  <rect x="720" y="438" width="390" height="122" rx="24" fill="#0F1815" stroke="#2E463F"/>
+  <text x="744" y="471" fill="#F1F6F3" font-family="Arial, sans-serif" font-size="22" font-weight="800">Word relations</text>
+  <text x="744" y="500" fill="#AEC0B8" font-family="Arial, sans-serif" font-size="15">Roots, derived forms, synonyms, antonyms, and examples.</text>
+  <path d="M767 532H844M844 532L877 512M844 532L877 552M910 532H987" stroke="#6CA488" stroke-width="8" stroke-linecap="round"/>
+  <defs>
+    <radialGradient id="bg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(600 337) rotate(90) scale(420 670)">
+      <stop stop-color="#193027" stop-opacity="0.82"/>
+      <stop offset="1" stop-color="#07100D" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+</svg>

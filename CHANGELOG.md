@@ -6,6 +6,41 @@ The format is based on Keep a Changelog, and this project follows Conventional C
 
 ## [Unreleased]
 
+## [2026-06-19]
+
+### Added
+- Local demo-account entry on the auth page so first-time visitors can open the app without creating a synced account.
+- Exam-path landing cards in the library for junior high, high school, CET, and IELTS/TOEFL-oriented study entry.
+- Release checklist under `docs/release-checklist.md` for local build, browser smoke, mobile layout, and Vercel verification.
+- Product preview asset in `docs/assets/lumalex-product-preview.svg` for README and public project presentation.
+
+### Changed
+- README now presents LumaLex as a student-facing product with clearer target learners, study workflow, contribution direction, roadmap, and live-demo positioning.
+- Review spelling and post-review spelling flows now use the new per-letter spelling input instead of a free-form field.
+- Learn and review stores now guard against duplicate submit/postpone actions while async state is in flight.
+- Learn-session restoration now preserves the learner's place more reliably when the word queue changes.
+- Library landing UI now emphasizes exam goals, deck discovery, and concrete deck-creation suggestions instead of a plain management-first layout.
+- Demo sessions are treated as local-only auth state so cloud-sync UI and token-dependent sync paths do not behave like a real online account.
+
+### Fixed
+- Removed garbled Chinese labels from the new letter-spelling input before release validation.
+- Prevented repeated review/learn submissions from racing the local session state and causing double-advance behavior.
+
+### Verified
+- `cd frontend && npm.cmd run build`
+- `python -m py_compile backend/app.py`
+- Manual browser smoke: auth demo entry, library landing page, and review entry screen on desktop plus library layout on a 390px mobile viewport
+
+### Known issues
+- Frontend production build still emits a Vite chunk-size warning because the main bundle remains above 500 kB after minification.
+- The new per-letter spelling UI is only build-validated so far; this run did not complete a full end-to-end spelling session with real due items.
+- React Router v6 future-flag warnings still appear in local dev mode.
+
+### Next development plan
+- Run a real review/spelling round with seeded due items to verify the new per-letter spelling component through completion states.
+- Split heavy frontend bundles, especially dictionary and study/detail surfaces, to remove the current Vite warning.
+- Add lightweight automated coverage around auth/demo session handling, duplicate-submit protection, and learn/review session restoration.
+
 ## [2026-06-12]
 
 ### Added

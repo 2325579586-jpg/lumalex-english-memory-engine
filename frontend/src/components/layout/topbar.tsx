@@ -23,7 +23,11 @@ function getTodayLabel() {
   }).format(new Date());
 }
 
-function getSyncBadge(state: ReturnType<typeof useCloudSyncStatus>) {
+function getSyncBadge(state: ReturnType<typeof useCloudSyncStatus>, syncToken?: string) {
+  if (syncToken?.startsWith("local-demo")) {
+    return { label: "本地试用", variant: "secondary" as const };
+  }
+
   switch (state.status) {
     case "queued":
       return { label: "待同步", variant: "muted" as const };
@@ -71,7 +75,7 @@ export function Topbar() {
   const session = useAuthStore((state) => state.session);
   const logout = useAuthStore((state) => state.logout);
   const syncState = useCloudSyncStatus();
-  const syncBadge = getSyncBadge(syncState);
+  const syncBadge = getSyncBadge(syncState, session?.syncToken);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchState, setSearchState] = useState<SearchState>({ status: "idle" });
   const [decks, setDecks] = useState<Deck[]>([]);

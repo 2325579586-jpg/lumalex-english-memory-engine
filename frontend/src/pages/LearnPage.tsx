@@ -103,6 +103,7 @@ export function LearnPage() {
     selectedLexiconId,
     dailyTarget,
     loading,
+    submitting,
     error,
     queue,
     currentIndex,
@@ -216,7 +217,7 @@ export function LearnPage() {
       if (key === "1") chooseFeedback("know");
       if (key === "2") chooseFeedback("vague");
       if (key === "3") chooseFeedback("dontKnow");
-      if (key === "n" && pendingResult) {
+      if (key === "n" && pendingResult && !submitting) {
         const selected = pendingResult;
         submitFeedback(selected)
           .then(() => {
@@ -230,7 +231,7 @@ export function LearnPage() {
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [activeSession, chooseFeedback, pendingResult, submitFeedback, toggleStarCurrent]);
+  }, [activeSession, chooseFeedback, pendingResult, submitFeedback, submitting, toggleStarCurrent]);
 
   const currentDeckName = useMemo(
     () => decks.find((deck) => deck.id === selectedLexiconId)?.name || "系统推荐词池",
@@ -248,7 +249,7 @@ export function LearnPage() {
   const answerPartOfSpeech = item?.partOfSpeech || item?.type || "";
 
   const commitAndNext = async () => {
-    if (!pendingResult) return;
+    if (!pendingResult || submitting) return;
     await submitFeedback(pendingResult);
     setPendingResult(null);
     setDetailsVisible(false);
@@ -591,6 +592,7 @@ export function LearnPage() {
                   key={option.value}
                   variant="outline"
                   className="h-11 rounded-2xl border-border/80 bg-panel/[0.55] px-2 text-sm"
+                  disabled={submitting}
                   onClick={() => chooseFeedback(option.value)}
                 >
                   {option.label}
@@ -599,11 +601,11 @@ export function LearnPage() {
             </div>
           ) : (
             <div className="grid grid-cols-[0.8fr_1.2fr] gap-2">
-              <Button variant="secondary" className="h-11 rounded-2xl" onClick={() => chooseFeedback("dontKnow")}>
+              <Button variant="secondary" className="h-11 rounded-2xl" disabled={submitting} onClick={() => chooseFeedback("dontKnow")}>
                 记错了
               </Button>
-              <Button className="h-11 rounded-2xl" disabled={!pendingResult} onClick={() => commitAndNext().catch(() => undefined)}>
-                下一词
+              <Button className="h-11 rounded-2xl" disabled={!pendingResult || submitting} onClick={() => commitAndNext().catch(() => undefined)}>
+                {submitting ? "提交中..." : "下一词"}
               </Button>
             </div>
           )}
