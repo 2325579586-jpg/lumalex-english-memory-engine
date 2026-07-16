@@ -3,6 +3,8 @@
 ## Blockers / publish safety
 - Frontend production build succeeds locally with `npm.cmd run build` and is covered by GitHub Actions on pull requests.
 - Backend syntax validation succeeds with `python -m py_compile backend/app.py`.
+- Git access was restored for the 2026-07-16 maintenance run; the queued documentation can be committed and pushed to the existing maintenance branch.
+- The active maintenance branch and `origin/main` have no usable merge base, so publishing these application changes to `main` requires a reviewed reconciliation branch/PR rather than a force push.
 - No automated API/frontend test suite exists yet, so publish confidence still depends on build CI plus manual smoke testing.
 - Current maintenance branch has browser smoke coverage for auth demo entry, library landing, and review entry, but not for a full spelling/review completion cycle with seeded due words.
 
@@ -14,6 +16,7 @@
 - React Router future-flag warnings still appear in local dev mode.
 
 ## Next development plan
+- Reconcile the maintained application history with `origin/main` through a reviewed branch/PR without rewriting the remote default branch.
 - Add code-splitting for dictionary + relations UI (dynamic import on demand) to reduce initial bundle size.
 - Add lightweight automated checks:
   - `frontend`: expose `tsc -b` as a standalone `typecheck` script + add optional lint

@@ -6,6 +6,47 @@ The format is based on Keep a Changelog, and this project follows Conventional C
 
 ## [Unreleased]
 
+## [2026-07-16]
+
+### Maintenance
+- Reviewed repository activity since the 2026-07-09 maintenance run; no new source-level feature, bug fix, UI, data, or API commits were present.
+- Restored Git access in the maintenance environment and fetched the latest remote branch state.
+- Preserved and reviewed the queued 2026-07-04 maintenance notes before publication.
+
+### Verified
+- `cd frontend && npm.cmd run build`
+- `python -m py_compile backend/app.py`
+
+### Known issues
+- Frontend production build still emits a Vite chunk-size warning because the main JavaScript chunk is 584.08 kB after minification.
+- No automated API/frontend test suite exists yet, so release confidence still depends on build checks plus manual smoke coverage.
+- The active maintenance branch and `origin/main` do not have a usable merge base; integrate through a reviewed reconciliation branch or PR instead of force-pushing `main`.
+
+### Next development plan
+- Reconcile the maintained application history with `origin/main` through a reviewed branch/PR.
+- Split heavy frontend bundles, especially dictionary and study/detail surfaces, to remove the current Vite chunk-size warning.
+- Add lightweight automated coverage around auth/demo session handling, duplicate-submit protection, and learn/review session restoration.
+
+## [2026-07-04]
+
+### Maintenance
+- Reviewed repository activity since the 2026-06-26 maintenance run; no source-level feature, bug fix, UI, data, or API changes were detected after that run.
+- Re-ran the standard local release checks to confirm the current codebase remains buildable.
+
+### Verified
+- `cd frontend && npm.cmd run build`
+- `python -m py_compile backend/app.py`
+
+### Known issues
+- Frontend production build still emits a Vite chunk-size warning because the main JavaScript chunk is 584.08 kB after minification.
+- Local Git publishing is blocked in this environment: `C:\Program Files\Git\mingw64\bin\git.exe` exits with Windows code `-1073741515`, and `git` is not available on `PATH`.
+- No automated API/frontend test suite exists yet, so release confidence still depends on build checks plus manual smoke coverage.
+
+### Next development plan
+- Restore a working Git CLI in the maintenance environment, then inspect status and push any queued documentation or source changes.
+- Split heavy frontend bundles, especially dictionary and study/detail surfaces, to remove the current Vite chunk-size warning.
+- Add lightweight automated coverage around auth/demo session handling, duplicate-submit protection, and learn/review session restoration.
+
 ## [2026-06-19]
 
 ### Added
