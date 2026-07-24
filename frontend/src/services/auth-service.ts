@@ -6,7 +6,8 @@ import type { AppUser, AuthSession } from "@/types/domain";
 
 const REQUEST_FAILED_MESSAGE = "\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u3002";
 const USERNAME_TOO_SHORT_MESSAGE = "\u8d26\u53f7\u81f3\u5c11\u9700\u8981 3 \u4e2a\u5b57\u7b26\u3002";
-const PASSWORD_TOO_SHORT_MESSAGE = "\u5bc6\u7801\u81f3\u5c11\u9700\u8981 6 \u4e2a\u5b57\u7b26\u3002";
+const PASSWORD_TOO_SHORT_MESSAGE = "\u5bc6\u7801\u81f3\u5c11\u9700\u8981 8 \u4e2a\u5b57\u7b26\u3002";
+const REQUEST_TIMEOUT_MS = 15_000;
 const ACCOUNT_EXISTS_MESSAGE = "\u8fd9\u4e2a\u8d26\u53f7\u5df2\u7ecf\u5b58\u5728\uff0c\u8bf7\u76f4\u63a5\u767b\u5f55\u3002";
 const ACCOUNT_NOT_FOUND_MESSAGE = "\u8d26\u53f7\u4e0d\u5b58\u5728\uff0c\u8bf7\u5148\u6ce8\u518c\u3002";
 const PASSWORD_INCORRECT_MESSAGE = "\u5bc6\u7801\u9519\u8bef\uff0c\u8bf7\u91cd\u65b0\u8f93\u5165\u3002";
@@ -38,15 +39,20 @@ async function hashPassword(password: string) {
 
 async function requestJson<T>(path: string, body: Record<string, unknown>) {
   let response: Response;
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
     response = await fetch(apiUrl(path), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
   } catch {
     throw new ApiRequestError(REQUEST_FAILED_MESSAGE, { unavailable: true });
+  } finally {
+    window.clearTimeout(timer);
   }
 
   const contentType = response.headers.get("content-type") || "";
@@ -174,6 +180,8 @@ async function migrateLocalUserData(fromUserId: string, toUserId: string) {
 
 export async function syncLegacyLocalAccountToBackend(userId: string) {
   if (userId === "local-demo-user") return getAuthSession();
+  const currentSession = getAuthSession();
+  if (currentSession?.userId === userId && currentSession.syncToken?.startsWith("v2.")) return currentSession;
   const localUser = await userRepository.getById(userId);
   if (!localUser) return null;
 
@@ -191,6 +199,7 @@ export async function syncCurrentLocalAccountToBackend() {
   const session = getAuthSession();
   if (!session) return null;
   if (session.syncToken?.startsWith("local-demo")) return session;
+  if (session.syncToken?.startsWith("v2.")) return session;
 
   const [currentUser, usernameUser] = await Promise.all([
     userRepository.getById(session.userId),
@@ -225,14 +234,14 @@ export async function registerAccount(username: string, password: string) {
   if (normalized.length < 3) {
     throw new Error(USERNAME_TOO_SHORT_MESSAGE);
   }
-  if (password.trim().length < 6) {
+  if (password.length < 8) {
     throw new Error(PASSWORD_TOO_SHORT_MESSAGE);
   }
 
   try {
     const payload = await requestJson<{ session?: AuthSession }>("/auth/register", { username: normalized, password });
     const session = assertSession(payload);
-    await ensureLocalUser(session.userId, session.username, await hashPassword(password));
+    await ensureLocalUser(session.userId, session.username, "");
     return session;
   } catch (error) {
     if (isApiUnavailable(error)) {
@@ -245,19 +254,11 @@ export async function registerAccount(username: string, password: string) {
 export async function loginAccount(username: string, password: string) {
   const normalized = normalizeUsername(username);
   const passwordHash = await hashPassword(password);
-  const localUser = await userRepository.getByUsername(normalized);
-  if (localUser) {
-    await requestJson<{ session?: AuthSession }>("/auth/sync-local-user", {
-      userId: localUser.id,
-      username: normalized,
-      passwordHash,
-    }).catch(() => undefined);
-  }
 
   try {
     const payload = await requestJson<{ session?: AuthSession }>("/auth/login", { username: normalized, password });
     const session = assertSession(payload);
-    await ensureLocalUser(session.userId, session.username, passwordHash);
+    await ensureLocalUser(session.userId, session.username, "");
     setAuthSession(session);
     return session;
   } catch (error) {
@@ -282,14 +283,23 @@ export async function loginAccount(username: string, password: string) {
 
     const retry = await requestJson<{ session?: AuthSession }>("/auth/login", { username: normalized, password });
     const session = assertSession(retry);
-    await ensureLocalUser(session.userId, session.username, passwordHash);
+    await ensureLocalUser(session.userId, session.username, "");
     setAuthSession(session);
     return session;
   }
 }
 
-export function logoutAccount() {
-  clearAuthSession();
+export function logoutAccount(session: AuthSession | null = getAuthSession()) {
+  const currentSession = getAuthSession();
+  if (!session || currentSession?.syncToken === session.syncToken) {
+    clearAuthSession();
+  }
+  if (session?.userId && session.syncToken?.startsWith("v2.")) {
+    void requestJson("/auth/logout", {
+      userId: session.userId,
+      syncToken: session.syncToken,
+    }).catch(() => undefined);
+  }
 }
 
 export async function startDemoAccount() {

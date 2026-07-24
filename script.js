@@ -3579,9 +3579,9 @@ function renderLexiconGrid() {
   if (!lexicons.length) {
     lexiconGrid.innerHTML = `
       <article class="lexicon-card glass">
-        <p class="eyebrow">${dictionary.lexiconSpace}</p>
-        <h4>${dictionary.yourStudySets}</h4>
-        <p>${dictionary.noLexiconItemsYet}</p>
+        <p class="eyebrow">${escapeHtml(dictionary.lexiconSpace)}</p>
+        <h4>${escapeHtml(dictionary.yourStudySets)}</h4>
+        <p>${escapeHtml(dictionary.noLexiconItemsYet)}</p>
       </article>
     `;
     return;
@@ -3593,16 +3593,16 @@ function renderLexiconGrid() {
       const scopeLabel =
         lexicon.scope === "system" ? dictionary.lexiconSourceSystem : dictionary.lexiconSourceCustom;
       return `
-        <article class="lexicon-card glass" data-lexicon-id="${lexicon.id}">
+        <article class="lexicon-card glass" data-lexicon-id="${escapeHtml(lexicon.id)}">
           <div class="lexicon-card-head">
-            <p class="eyebrow">${scopeLabel}</p>
-            <span class="status-badge ${stats.reviewCount ? "accent" : ""}">${stats.reviewCount} ${dictionary.reviews}</span>
+            <p class="eyebrow">${escapeHtml(scopeLabel)}</p>
+            <span class="status-badge ${stats.reviewCount ? "accent" : ""}">${Number(stats.reviewCount) || 0} ${escapeHtml(dictionary.reviews)}</span>
           </div>
-          <h4>${getLexiconName(lexicon)}</h4>
-          <p>${getLexiconDescription(lexicon) || dictionary.studySelectionBody}</p>
+          <h4>${escapeHtml(getLexiconName(lexicon))}</h4>
+          <p>${escapeHtml(getLexiconDescription(lexicon) || dictionary.studySelectionBody)}</p>
           <div class="lexicon-card-meta">
-            <span><strong>${stats.itemCount}</strong> ${dictionary.lexiconItemsLabel}</span>
-            <span><strong>${stats.newCount}</strong> ${dictionary.newWords}</span>
+            <span><strong>${Number(stats.itemCount) || 0}</strong> ${escapeHtml(dictionary.lexiconItemsLabel)}</span>
+            <span><strong>${Number(stats.newCount) || 0}</strong> ${escapeHtml(dictionary.newWords)}</span>
           </div>
         </article>
       `;
@@ -3628,7 +3628,7 @@ async function renderLexiconDetail(lexiconId) {
   lexiconDetailReviewCount.textContent = String(stats.reviewCount);
   lexiconDetailItemCount.textContent = String(stats.itemCount);
   deleteLexiconButton?.classList.toggle("hidden", lexicon.scope === "system");
-  lexiconItemsList.innerHTML = `<div class="lexicon-empty">${dictionary.lexiconLoading}</div>`;
+  lexiconItemsList.innerHTML = `<div class="lexicon-empty">${escapeHtml(dictionary.lexiconLoading)}</div>`;
 
   if (typeof openModal === "function") {
     openModal(lexiconDetailModal);
@@ -3647,7 +3647,7 @@ async function renderLexiconDetail(lexiconId) {
   if (!detailItems.length) {
     lexiconItemsList.innerHTML = `
       <div class="lexicon-empty">
-        ${lexicon.scope === "system" ? dictionary.noSystemLexiconItemsYet : dictionary.noLexiconItemsYet}
+        ${escapeHtml(lexicon.scope === "system" ? dictionary.noSystemLexiconItemsYet : dictionary.noLexiconItemsYet)}
       </div>
     `;
     return;
@@ -3659,12 +3659,12 @@ async function renderLexiconDetail(lexiconId) {
       return `
         <div class="lexicon-item-row">
           <div class="lexicon-item-main">
-            <strong>${item.text}</strong>
-            <span>${item.phonetic || ""}</span>
+            <strong>${escapeHtml(item.text)}</strong>
+            <span>${escapeHtml(item.phonetic || "")}</span>
           </div>
           <div class="lexicon-item-meta">
-            <span>${item.pos || ""}</span>
-            <span>${meaning}</span>
+            <span>${escapeHtml(item.pos || "")}</span>
+            <span>${escapeHtml(meaning)}</span>
           </div>
         </div>
       `;

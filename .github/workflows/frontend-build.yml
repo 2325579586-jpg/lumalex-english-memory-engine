@@ -1,4 +1,4 @@
-name: Frontend build
+name: Application quality checks
 
 on:
   pull_request:
@@ -12,8 +12,8 @@ permissions:
   contents: read
 
 jobs:
-  frontend-build:
-    name: TypeScript and Vite build
+  quality-checks:
+    name: API tests, backend tests, and frontend build
     runs-on: ubuntu-latest
 
     steps:
@@ -29,12 +29,31 @@ jobs:
             package-lock.json
             frontend/package-lock.json
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
       - name: Install API dependencies
         run: npm ci
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Install backend dependencies
+        run: python -m pip install -r backend/requirements.txt pip-audit==2.9.0
+
+      - name: Audit Python dependencies
+        run: python -m pip_audit -r backend/requirements.txt
+
+      - name: Validate API syntax
+        run: npm run check:api
+
+      - name: Run API and backend tests
+        run: npm test
 
       - name: Build frontend
         working-directory: frontend

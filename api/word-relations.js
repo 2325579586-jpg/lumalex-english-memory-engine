@@ -1,4 +1,6 @@
 const { handleOptions, readJsonBody, sendJson } = require("./_lib/http");
+const { fetchWithTimeout } = require("./_lib/fetch");
+const { checkRateLimit } = require("./_lib/rate-limit");
 
 const GROUPS = [
   {
@@ -24,6 +26,27 @@ const GROUPS = [
 ];
 
 const responseCache = new Map();
+const CACHE_TTL_MS = 30 * 60 * 1000;
+const MAX_CACHE_ENTRIES = 250;
+
+function getCachedResponse(key) {
+  const cached = responseCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    responseCache.delete(key);
+    return null;
+  }
+  responseCache.delete(key);
+  responseCache.set(key, cached);
+  return cached.value;
+}
+
+function setCachedResponse(key, value) {
+  responseCache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  while (responseCache.size > MAX_CACHE_ENTRIES) {
+    responseCache.delete(responseCache.keys().next().value);
+  }
+}
 
 function text(value) {
   return String(value || "").trim();
@@ -186,7 +209,7 @@ async function generateWordRelations(payload) {
   const systemPrompt =
     "你是一个专业的英语词汇学习助手。你的任务是为中国英语学习者生成准确、实用、适合背单词场景的关系词数据。你必须只返回合法 JSON，不要返回 Markdown，不要解释，不要添加多余文本。";
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -201,7 +224,7 @@ async function generateWordRelations(payload) {
         { role: "user", content: buildUserPrompt(payload) },
       ],
     }),
-  });
+  }, 30_000);
 
   if (!response.ok) {
     const errorPayload = await response.json().catch(() => ({}));
@@ -215,26 +238,34 @@ async function generateWordRelations(payload) {
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;
-  if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" });
+  if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" }, req);
+  if (!checkRateLimit(req, res, { key: "word-relations", max: 20, windowMs: 60_000 })) return;
 
-  const payload = await readJsonBody(req);
+  const payload = await readJsonBody(req, res, { maxBytes: 24 * 1024 });
+  if (!payload) return;
   const word = text(payload.word);
   const definition = text(payload.definition);
   const partOfSpeech = text(payload.partOfSpeech);
   const language = text(payload.language) || "zh-CN";
-  if (!word) return sendJson(res, 400, { error: "word is required" });
+  if (!word || word.length > 80 || definition.length > 500 || partOfSpeech.length > 80 || language.length > 20) {
+    return sendJson(res, 400, { error: "word relation input is invalid", code: "INVALID_RELATION_INPUT" }, req);
+  }
 
   const requestPayload = { word, definition, partOfSpeech, language };
   const key = cacheKey(requestPayload);
-  if (responseCache.has(key)) {
-    return sendJson(res, 200, responseCache.get(key));
+  const cached = getCachedResponse(key);
+  if (cached) {
+    return sendJson(res, 200, cached, req);
   }
 
   try {
     const relations = await generateWordRelations(requestPayload);
-    responseCache.set(key, relations);
-    return sendJson(res, 200, relations);
+    setCachedResponse(key, relations);
+    return sendJson(res, 200, relations, req);
   } catch (error) {
-    return sendJson(res, 502, { error: error instanceof Error ? error.message : "word relations failed" });
+    console.warn("[word-relations] provider request failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return sendJson(res, 502, { error: "关系词服务暂时不可用，请稍后重试。", code: "RELATION_PROVIDER_FAILED" }, req);
   }
 };

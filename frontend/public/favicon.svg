@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LumaLex">
+  <rect width="64" height="64" rx="16" fill="#0f1714"/>
+  <path d="M17 15v31h22v-8H26V15z" fill="#78ad91"/>
+  <path d="M37 15h10v31H37z" fill="#d39c5c" opacity=".92"/>
+</svg>

@@ -542,7 +542,7 @@ export function ReviewPage() {
               <h2
                 className={cn(
                   "max-w-full font-semibold tracking-normal",
-                  activeMode === "cloze" ? "whitespace-normal text-2xl sm:text-3xl" : "whitespace-nowrap",
+                  activeMode === "cloze" ? "whitespace-normal text-2xl sm:text-3xl" : "break-words [overflow-wrap:anywhere]",
                 )}
                 style={activeMode === "cloze" ? undefined : getStudyTitleStyle(prompt, { compact: revealed })}
                 title={prompt}

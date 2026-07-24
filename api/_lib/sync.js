@@ -10,14 +10,21 @@ function getPayloadTimestamp(item) {
     item.createdAt,
     item.startedAt,
   ];
-  const raw = candidates.find((value) => typeof value === "number" && Number.isFinite(value));
-  return raw ? new Date(raw) : new Date();
+  const raw = candidates.find((value) => typeof value === "number" && Number.isFinite(value) && value > 0);
+  if (!raw) return new Date();
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? new Date() : date;
 }
 
 function getSyncItemId(collection, item) {
-  if (collection === "deletions") return item.id || `${item.collection}:${item.itemId}`;
-  if (collection === "settings") return item.userId || item.id || "settings";
-  return item.id || item.wordId || item.deckId || item.term || `${collection}-${Math.random().toString(36).slice(2)}`;
+  const raw =
+    collection === "deletions"
+      ? item.id || (item.collection && item.itemId ? `${item.collection}:${item.itemId}` : "")
+      : collection === "settings"
+        ? item.userId || item.id || "settings"
+        : item.id || item.wordId || item.deckId || "";
+  const itemId = String(raw || "").trim();
+  return itemId && itemId.length <= 200 ? itemId : "";
 }
 
 function emptyCollections() {

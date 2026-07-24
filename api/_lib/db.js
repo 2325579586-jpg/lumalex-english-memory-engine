@@ -47,6 +47,26 @@ async function ensureSchema() {
     `;
 
     await sql`
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id BIGSERIAL PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        expires_at TIMESTAMPTZ NOT NULL
+      )
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_expiry
+      ON auth_sessions (user_id, expires_at DESC)
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_auth_sessions_expiry
+      ON auth_sessions (expires_at)
+    `;
+
+    await sql`
       CREATE INDEX IF NOT EXISTS idx_cloud_sync_user_collection
       ON cloud_sync_records (user_id, collection, updated_at)
     `;
@@ -84,7 +104,10 @@ async function ensureSchema() {
       CREATE INDEX IF NOT EXISTS idx_system_lexicon_items_lexicon
       ON system_lexicon_items (lexicon_id, item_index)
     `;
-  })();
+  })().catch((error) => {
+    schemaReadyPromise = null;
+    throw error;
+  });
 
   return schemaReadyPromise;
 }

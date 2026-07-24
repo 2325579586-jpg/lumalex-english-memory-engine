@@ -1,13 +1,14 @@
 const { ensureSchema, getSql } = require("../_lib/db");
 const { verifySyncAuth } = require("../_lib/auth");
 const { emptyCollections, isCloudRelevantWord, SYNC_COLLECTIONS } = require("../_lib/sync");
-const { handleOptions, readJsonBody, sendJson } = require("../_lib/http");
+const { handleOptions, readJsonBody, sendJson, sendServerError } = require("../_lib/http");
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;
-  if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" });
+  if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" }, req);
 
-  const payload = await readJsonBody(req);
+  const payload = await readJsonBody(req, res, { maxBytes: 32 * 1024 });
+  if (!payload) return;
   const userId = String(payload.userId || "").trim();
   const syncToken = String(payload.syncToken || "").trim();
   const since = Number(payload.since || 0);
@@ -16,14 +17,15 @@ module.exports = async function handler(req, res) {
   const [cursorTimeRaw, cursorIdRaw] = cursor.split(":");
   const cursorTime = Number(cursorTimeRaw || 0);
   const cursorId = Number(cursorIdRaw || 0);
-  if (!userId) return sendJson(res, 400, { error: "userId is required" });
-  if (!syncToken) return sendJson(res, 401, { error: "Unauthorized" });
+  if (!userId || userId.length > 160) return sendJson(res, 400, { error: "userId is invalid" }, req);
+  if (!syncToken || syncToken.length > 128) return sendJson(res, 401, { error: "Unauthorized" }, req);
+  if (cursor && !/^\d+:\d+$/.test(cursor)) return sendJson(res, 400, { error: "cursor is invalid" }, req);
 
   try {
     await ensureSchema();
     const sql = getSql();
     if (!(await verifySyncAuth(sql, userId, syncToken))) {
-      return sendJson(res, 401, { error: "Unauthorized" });
+      return sendJson(res, 401, { error: "Unauthorized" }, req);
     }
 
     const sinceDate = Number.isFinite(since) && since > 0 ? new Date(since) : null;
@@ -85,14 +87,8 @@ module.exports = async function handler(req, res) {
 
     const last = pageRows[pageRows.length - 1];
     const nextCursor = rows.length > limit && last ? `${new Date(last.updated_at).getTime()}:${last.id}` : undefined;
-    return sendJson(res, 200, { collections, cursor: nextCursor, hasMore: Boolean(nextCursor), syncedAt: Date.now() });
+    return sendJson(res, 200, { collections, cursor: nextCursor, hasMore: Boolean(nextCursor), syncedAt: Date.now() }, req);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Pull failed";
-    console.error("[sync/pull] failed", {
-      userId,
-      message,
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-    return sendJson(res, 500, { error: message, code: "SYNC_PULL_FAILED" });
+    return sendServerError(req, res, error, "sync/pull", "云同步读取失败，请稍后重试。");
   }
 };

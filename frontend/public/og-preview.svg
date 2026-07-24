@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="LumaLex 英语记忆系统">
+  <defs>
+    <radialGradient id="g" cx="0" cy="0" r="1" gradientTransform="translate(170 80) rotate(32) scale(940 680)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#294c3e"/>
+      <stop offset=".52" stop-color="#111b17"/>
+      <stop offset="1" stop-color="#080b0a"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#g)"/>
+  <path d="M0 520C235 442 418 566 658 493s364-54 542 7v130H0z" fill="#d39c5c" opacity=".09"/>
+  <rect x="88" y="84" width="84" height="84" rx="22" fill="#78ad91"/>
+  <path d="M112 106v42h31v-11h-19v-31z" fill="#07100c"/>
+  <text x="88" y="275" fill="#f4f7f4" font-family="Outfit,Arial,sans-serif" font-size="92" font-weight="700">LumaLex</text>
+  <text x="92" y="354" fill="#cbd6d1" font-family="Arial,sans-serif" font-size="36">英语记忆、复习与拼写训练</text>
+  <text x="92" y="430" fill="#78ad91" font-family="Arial,sans-serif" font-size="27">主动回忆 · 间隔复习 · 本地优先</text>
+</svg>

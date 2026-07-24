@@ -6,6 +6,43 @@ The format is based on Keep a Changelog, and this project follows Conventional C
 
 ## [Unreleased]
 
+## [2026-07-24]
+
+### Added
+- Node security tests for password hashing, legacy-password migration, username validation, and sync payload identifiers/timestamps.
+- Flask integration tests for authentication, logout/session revocation, and sync authorization behavior.
+- API syntax validation plus a unified `npm run check` command, with matching GitHub Actions coverage on Python 3.12.
+- Architecture and optimization audit documentation covering runtime boundaries, authentication, sync, deployment, and follow-up work.
+- Dedicated not-found and full-page loading states, plus favicon and social-preview assets.
+
+### Changed
+- Reworked account security around salted scrypt password hashes, random revocable sessions, controlled legacy-account migration, explicit logout, and stricter input validation.
+- Hardened serverless and Flask APIs with rate limiting, safer CORS/error responses, bounded request payloads, database timeouts, and normalized upstream fetch handling.
+- Made cloud sync conflict-aware so stale client updates cannot overwrite newer server records, while tightening sync item and deletion validation.
+- Lazy-loaded authentication and authenticated product routes, then split major pages and services into smaller production chunks.
+- Updated Vercel rewrites/headers, supported runtime documentation, release checks, and frontend dependency pins for the new build baseline.
+
+### Fixed
+- Prevented stale or malformed sync data from silently replacing valid cloud state.
+- Prevented logged-out or revoked sessions from continuing to access authenticated sync endpoints.
+- Improved authentication and cloud-sync client handling for error responses, logout state, and legacy local-user migration.
+- Removed the previous single JavaScript chunk size warning through route and service code splitting.
+
+### Verified
+- `npm.cmd run check` (20 API files, 6 Node tests, 4 Flask tests, TypeScript build, and Vite production build)
+- `git diff --check`
+
+### Known issues
+- Browser end-to-end coverage is still missing for complete learn, review, spelling, logout, and cloud-conflict flows.
+- The local maintenance machine uses Python 3.9, so `pip-audit` cannot resolve the Python 3.12 dependency set; GitHub Actions installs and audits it under the supported Python 3.12 runtime.
+- The active maintenance branch and `origin/main` still require a reviewed history reconciliation; do not force-push or merge unstable work directly into `main`.
+
+### Next development plan
+- Add browser automation for the full review-to-spelling lifecycle and cloud conflict/re-authentication paths.
+- Add frontend linting with React hooks and accessibility rules.
+- Add a Postgres-backed integration test for conditional sync UPSERT behavior.
+- Reconcile the maintained branch with `origin/main` through a reviewed branch or pull request.
+
 ## [2026-07-16]
 
 ### Maintenance

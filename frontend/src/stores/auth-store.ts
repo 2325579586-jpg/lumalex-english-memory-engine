@@ -1,12 +1,5 @@
 import { create } from "zustand";
-import {
-  getCurrentSession,
-  loginAccount,
-  logoutAccount,
-  registerAccount,
-  startDemoAccount,
-  syncLegacyLocalAccountToBackend,
-} from "@/services/auth-service";
+import { clearAuthSession, getAuthSession } from "@/services/auth-session";
 import type { AuthSession } from "@/types/domain";
 
 type AuthStatus = "unknown" | "authenticated" | "guest";
@@ -27,9 +20,10 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
   session: null,
   loading: false,
   hydrate: () => {
-    const session = getCurrentSession();
-    if (session) {
-      void syncLegacyLocalAccountToBackend(session.userId)
+    const session = getAuthSession();
+    if (session && !session.syncToken?.startsWith("v2.") && !session.syncToken?.startsWith("local-demo")) {
+      void import("@/services/auth-service")
+        .then(({ syncLegacyLocalAccountToBackend }) => syncLegacyLocalAccountToBackend(session.userId))
         .then((syncedSession) => {
           if (syncedSession) set({ session: syncedSession, status: "authenticated" });
         })
@@ -43,6 +37,7 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
   register: async (username, password) => {
     set({ loading: true });
     try {
+      const { registerAccount } = await import("@/services/auth-service");
       await registerAccount(username, password);
       set({ loading: false });
     } catch (error) {
@@ -53,6 +48,7 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
   login: async (username, password) => {
     set({ loading: true });
     try {
+      const { loginAccount } = await import("@/services/auth-service");
       const session = await loginAccount(username, password);
       set({
         session,
@@ -67,6 +63,7 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
   startDemo: async () => {
     set({ loading: true });
     try {
+      const { startDemoAccount } = await import("@/services/auth-service");
       const session = await startDemoAccount();
       set({
         session,
@@ -79,7 +76,11 @@ export const useAuthStore = create<AuthStoreState>((set) => ({
     }
   },
   logout: () => {
-    logoutAccount();
+    const session = getAuthSession();
+    clearAuthSession();
+    void import("@/services/auth-service")
+      .then(({ logoutAccount }) => logoutAccount(session))
+      .catch(() => undefined);
     set({
       session: null,
       status: "guest",

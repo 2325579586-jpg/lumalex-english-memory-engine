@@ -1,7 +1,8 @@
 const { ensureSchema, getSql } = require("../_lib/db");
-const { handleOptions, readJsonBody, sendJson } = require("../_lib/http");
-const { buildSession, normalizeUsername } = require("../_lib/auth");
+const { handleOptions, readJsonBody, sendJson, sendServerError } = require("../_lib/http");
+const { isLegacyPasswordHash, isValidUsername, issueSession, normalizeUsername, safeEqualHex } = require("../_lib/auth");
 const { getPayloadTimestamp, getSyncItemId } = require("../_lib/sync");
+const { checkRateLimit } = require("../_lib/rate-limit");
 const crypto = require("node:crypto");
 
 function remapUserScopedValue(value, fromUserId, toUserId) {
@@ -73,16 +74,19 @@ async function mergeCloudSyncRecords(sql, fromUserId, toUserId) {
 
 module.exports = async function handler(req, res) {
   if (handleOptions(req, res)) return;
-  if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" });
+  if (req.method !== "POST") return sendJson(res, 405, { error: "Method not allowed" }, req);
+  if (!checkRateLimit(req, res, { key: "auth-sync-local", max: 8, windowMs: 60_000 })) return;
 
-  const payload = await readJsonBody(req);
+  const payload = await readJsonBody(req, res, { maxBytes: 16 * 1024 });
+  if (!payload) return;
   const username = normalizeUsername(payload.username);
   const passwordHash = String(payload.passwordHash || "").trim();
   const preferredUserId = String(payload.userId || "").trim();
 
-  if (username.length < 3 || !passwordHash) {
-    return sendJson(res, 400, { error: "username and passwordHash are required" });
+  if (!isValidUsername(username) || !isLegacyPasswordHash(passwordHash)) {
+    return sendJson(res, 400, { error: "Legacy account data is invalid", code: "INVALID_LEGACY_ACCOUNT" }, req);
   }
+  const safePreferredUserId = /^user-[a-z0-9-]{8,80}$/i.test(preferredUserId) ? preferredUserId : "";
 
   try {
     await ensureSchema();
@@ -96,21 +100,21 @@ module.exports = async function handler(req, res) {
 
     if (existing.length) {
       const user = existing[0];
-      if (user.password_hash !== passwordHash) {
-        return sendJson(res, 409, { error: "账号已存在且密码不匹配，无法自动迁移。" });
+      if (!isLegacyPasswordHash(user.password_hash) || !safeEqualHex(user.password_hash, passwordHash)) {
+        return sendJson(res, 409, { error: "本地账号需要重新登录后才能继续同步。", code: "LEGACY_REAUTH_REQUIRED" }, req);
       }
-      const migratedRecords = await mergeCloudSyncRecords(sql, preferredUserId, user.id);
-      return sendJson(res, 200, { session: buildSession(user), synced: false, migratedRecords });
+      const migratedRecords = await mergeCloudSyncRecords(sql, safePreferredUserId, user.id);
+      return sendJson(res, 200, { session: await issueSession(sql, user), synced: false, migratedRecords }, req);
     }
 
-    const userId = preferredUserId || `user-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const userId = safePreferredUserId || `user-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
     const rows = await sql`
       INSERT INTO users (id, username, username_normalized, password_hash, created_at, updated_at)
       VALUES (${userId}, ${username}, ${username}, ${passwordHash}, NOW(), NOW())
       RETURNING id, username, password_hash
     `;
-    return sendJson(res, 201, { session: buildSession(rows[0]), synced: true });
+    return sendJson(res, 201, { session: await issueSession(sql, rows[0]), synced: true }, req);
   } catch (error) {
-    return sendJson(res, 500, { error: error instanceof Error ? error.message : "Sync failed" });
+    return sendServerError(req, res, error, "auth/sync-local-user", "本地账号迁移失败，请稍后重试。");
   }
 };

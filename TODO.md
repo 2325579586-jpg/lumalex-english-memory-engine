@@ -5,22 +5,22 @@
 - Backend syntax validation succeeds with `python -m py_compile backend/app.py`.
 - Git access was restored for the 2026-07-16 maintenance run; the queued documentation can be committed and pushed to the existing maintenance branch.
 - The active maintenance branch and `origin/main` have no usable merge base, so publishing these application changes to `main` requires a reviewed reconciliation branch/PR rather than a force push.
-- No automated API/frontend test suite exists yet, so publish confidence still depends on build CI plus manual smoke testing.
+- Node API security tests and Flask authentication/sync integration tests now run in CI; browser-level product flows still require smoke testing.
 - Current maintenance branch has browser smoke coverage for auth demo entry, library landing, and review entry, but not for a full spelling/review completion cycle with seeded due words.
 
 ## Known issues
-- Bundle size warning during `frontend` build (single JS chunk > 500 kB).
+- Route, auth, dictionary, and add-word code splitting removed the single-chunk build warning; keep watching total authenticated-startup cost as features grow.
 - Windows PowerShell execution policy may block `npm` (use `npm.cmd` in this repo).
-- No automated test/lint scripts are currently configured, and `typecheck` is only covered through `frontend` build.
+- The supported backend/CI runtime is Python 3.12; the current maintenance machine still has Python 3.9, which cannot resolve the pinned dependency set for a local `pip-audit` run.
+- A standalone `typecheck` script and API/backend tests are configured; lint and browser end-to-end automation remain outstanding.
 - New per-letter spelling input is only partially smoke-tested so far; there is still no full end-to-end UI coverage for review completion -> spelling handoff.
 - React Router future-flag warnings still appear in local dev mode.
 
 ## Next development plan
 - Reconcile the maintained application history with `origin/main` through a reviewed branch/PR without rewriting the remote default branch.
-- Add code-splitting for dictionary + relations UI (dynamic import on demand) to reduce initial bundle size.
 - Add lightweight automated checks:
-  - `frontend`: expose `tsc -b` as a standalone `typecheck` script + add optional lint
-  - API: minimal unit tests for sync auth/token, word-relations response normalization, and deletions application logic
+  - `frontend`: add lint with React hooks and accessibility rules
+  - API: add a Postgres-backed integration test for conditional sync UPSERT behavior
 - Add a manual smoke checklist or browser automation for:
   - review completion -> post-round spelling session
   - per-letter spelling completion, retry, and clear states

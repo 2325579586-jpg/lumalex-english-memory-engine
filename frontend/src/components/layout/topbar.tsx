@@ -8,8 +8,7 @@ import { useCloudSyncStatus } from "@/hooks/use-cloud-sync-status";
 import { cn } from "@/lib/utils";
 import { deckRepository } from "@/repositories/deck-repository";
 import { wordRepository } from "@/repositories/word-repository";
-import { saveSingleWord } from "@/services/add-words-service";
-import { DictionaryService, type DictionaryEntry } from "@/services/dictionary-service";
+import type { DictionaryEntry } from "@/services/dictionary-service";
 import { playPronunciation } from "@/services/pronunciation-service";
 import { useAuthStore } from "@/stores/auth-store";
 import { useUiStore } from "@/stores/ui-store";
@@ -128,6 +127,7 @@ export function Topbar() {
         return;
       }
 
+      const { DictionaryService } = await import("@/services/dictionary-service");
       const entry = await DictionaryService.lookup(query, { allowAi: false });
       if (entry.source !== "fallback" && entry.meaning.trim()) {
         setSearchState({ status: "dictionary", query, entry });
@@ -149,6 +149,7 @@ export function Topbar() {
     setAdding(true);
     setAddMessage("");
     try {
+      const { saveSingleWord } = await import("@/services/add-words-service");
       const saved = await saveSingleWord({
         term: entry.word,
         meanings: entry.meaning,

@@ -4,16 +4,21 @@ import re
 import socket
 import uuid
 import hashlib
-from datetime import datetime
+import base64
+import hmac
+import secrets
+import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 from urllib.parse import urlparse
 
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request, send_from_directory
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, create_engine, inspect, or_, select, text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, and_, create_engine, delete, func, inspect, or_, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column
+from werkzeug.exceptions import HTTPException
 
 
 load_dotenv(Path(__file__).with_name(".env"), override=False)
@@ -124,6 +129,23 @@ def get_active_frontend_dir() -> Path:
 
 def normalize_text(value: str) -> str:
     return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+
+def utc_epoch_ms(value: Optional[datetime] = None) -> int:
+    moment = value or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return int(moment.timestamp() * 1000)
+
+
+def utc_now_naive() -> datetime:
+    """Return UTC without tzinfo for the existing cross-database DateTime columns."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def utc_datetime_from_ms(value: Union[float, int, str]) -> datetime:
+    """Convert an epoch-millisecond value to the database's naive-UTC format."""
+    return datetime.fromtimestamp(float(value) / 1000, timezone.utc).replace(tzinfo=None)
 
 
 def detect_kind(text_value: str) -> str:
@@ -383,17 +405,26 @@ class UserAccount(Base):
     username: Mapped[str] = mapped_column(String(120))
     username_normalized: Mapped[str] = mapped_column(String(120), index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, index=True)
 
-    def to_session(self) -> dict:
-        signature = hashlib.sha256(f"{self.id}:{self.password_hash}".encode("utf-8")).hexdigest()
+    def to_session(self, sync_token: str) -> dict:
         return {
             "userId": self.id,
             "username": self.username,
-            "syncToken": f"{self.id}.{signature}",
-            "loggedInAt": int(datetime.utcnow().timestamp() * 1000),
+            "syncToken": sync_token,
+            "loggedInAt": utc_epoch_ms(),
         }
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[str] = mapped_column(String(160), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
 
 
 class Lexicon(Base):
@@ -411,7 +442,7 @@ class Lexicon(Base):
     description_en: Mapped[str] = mapped_column(Text, default="")
     description_zh: Mapped[str] = mapped_column(Text, default="")
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, index=True)
 
     def to_frontend(self, item_count: int = 0) -> dict:
         return {
@@ -425,7 +456,7 @@ class Lexicon(Base):
             },
             "scope": "system" if self.is_system else "custom",
             "itemCount": item_count,
-            "createdAt": int(self.created_at.timestamp() * 1000),
+            "createdAt": utc_epoch_ms(self.created_at),
         }
 
 
@@ -457,7 +488,7 @@ class LexiconItem(Base):
     audio_url: Mapped[str] = mapped_column(Text, default="")
     lexicon_key: Mapped[str] = mapped_column(String(80), default="graduate", index=True)
     lexicon_id: Mapped[str] = mapped_column(String(160), default="", index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, index=True)
 
     def to_frontend(self) -> dict:
         return {
@@ -474,7 +505,7 @@ class LexiconItem(Base):
             "audioUrl": self.audio_url or "",
             "lexiconKey": self.lexicon_key,
             "lexiconId": self.lexicon_id or "",
-            "createdAt": int(self.created_at.timestamp() * 1000),
+            "createdAt": utc_epoch_ms(self.created_at),
             "isCustom": True,
         }
 
@@ -490,7 +521,7 @@ class CloudSyncRecord(Base):
     collection: Mapped[str] = mapped_column(String(80), index=True)
     item_id: Mapped[str] = mapped_column(String(200), index=True)
     payload_json: Mapped[str] = mapped_column(Text)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, index=True)
 
     def to_payload(self) -> dict:
         try:
@@ -519,13 +550,29 @@ def ensure_schema_updates() -> None:
 ensure_schema_updates()
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 1024 * 1024
+
+CORS_ALLOWED_ORIGINS = {
+    origin.strip()
+    for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin.strip()
+}
+RATE_LIMIT_BUCKETS: dict[str, tuple[int, float]] = {}
 
 
 @app.after_request
 def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    origin = request.headers.get("Origin", "").strip()
+    same_origin = request.host_url.rstrip("/")
+    if origin and (origin == same_origin or origin in CORS_ALLOWED_ORIGINS):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers.add("Vary", "Origin")
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-User-Key"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS"
+    response.headers["Cache-Control"] = "no-store" if request.path.startswith("/api/") else response.headers.get("Cache-Control", "no-cache")
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
     return response
 
 
@@ -538,7 +585,40 @@ def serve_index():
 
 @app.route("/api/<path:_path>", methods=["OPTIONS"])
 def preflight(_path: str):
+    origin = request.headers.get("Origin", "").strip()
+    if origin and origin != request.host_url.rstrip("/") and origin not in CORS_ALLOWED_ORIGINS:
+        return jsonify({"error": "Origin is not allowed", "code": "CORS_ORIGIN_DENIED"}), 403
     return ("", 204)
+
+
+@app.errorhandler(Exception)
+def handle_unexpected_error(error: Exception):
+    if isinstance(error, HTTPException):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": error.description, "code": error.name.upper().replace(" ", "_")}), error.code
+        return error
+    app.logger.exception("Unhandled request error", exc_info=error)
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Internal server error", "code": "INTERNAL_ERROR"}), 500
+    return "Internal server error", 500
+
+
+def rate_limit_exceeded(bucket_name: str, maximum: int, window_seconds: int = 60) -> bool:
+    now = time.monotonic()
+    client = request.headers.get("X-Forwarded-For", request.remote_addr or "unknown").split(",")[0].strip()
+    key = f"{bucket_name}:{client}"
+    count, reset_at = RATE_LIMIT_BUCKETS.get(key, (0, now + window_seconds))
+    if reset_at <= now:
+        count, reset_at = 0, now + window_seconds
+    count += 1
+    RATE_LIMIT_BUCKETS[key] = (count, reset_at)
+    if len(RATE_LIMIT_BUCKETS) > 2000:
+        expired = [item_key for item_key, (_, item_reset_at) in RATE_LIMIT_BUCKETS.items() if item_reset_at <= now]
+        for item_key in expired:
+            RATE_LIMIT_BUCKETS.pop(item_key, None)
+        while len(RATE_LIMIT_BUCKETS) > 2000:
+            RATE_LIMIT_BUCKETS.pop(next(iter(RATE_LIMIT_BUCKETS)))
+    return count > maximum
 
 
 def get_user_key() -> str:
@@ -551,11 +631,94 @@ def get_user_key() -> str:
 
 
 def normalize_username(value: str) -> str:
-    return re.sub(r"\s+", "", (value or "").strip().lower())
+    return (value or "").strip().lower()
+
+
+def is_valid_username(value: str) -> bool:
+    return 3 <= len(value) <= 64 and not re.search(r"\s|[\x00-\x1f\x7f]", value)
 
 
 def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+    salt = secrets.token_bytes(16)
+    derived = hashlib.scrypt(
+        password.encode("utf-8"),
+        salt=salt,
+        n=16_384,
+        r=8,
+        p=1,
+        dklen=64,
+        maxmem=32 * 1024 * 1024,
+    )
+    salt_text = base64.urlsafe_b64encode(salt).decode("ascii").rstrip("=")
+    hash_text = base64.urlsafe_b64encode(derived).decode("ascii").rstrip("=")
+    return f"scrypt$16384$8$1${salt_text}${hash_text}"
+
+
+def is_legacy_password_hash(value: str) -> bool:
+    return bool(re.fullmatch(r"[a-f0-9]{64}", value or "", flags=re.IGNORECASE))
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    if is_legacy_password_hash(stored_hash):
+        legacy = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        return hmac.compare_digest(legacy, stored_hash)
+    try:
+        algorithm, n_raw, r_raw, p_raw, salt_raw, hash_raw = stored_hash.split("$", 5)
+        if algorithm != "scrypt" or (int(n_raw), int(r_raw), int(p_raw)) != (16_384, 8, 1):
+            return False
+        salt = base64.urlsafe_b64decode(salt_raw + "=" * (-len(salt_raw) % 4))
+        expected = base64.urlsafe_b64decode(hash_raw + "=" * (-len(hash_raw) % 4))
+        actual = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=salt,
+            n=16_384,
+            r=8,
+            p=1,
+            dklen=len(expected),
+            maxmem=32 * 1024 * 1024,
+        )
+        return hmac.compare_digest(actual, expected)
+    except (ValueError, TypeError):
+        return False
+
+
+def issue_session(session: Session, user: UserAccount) -> dict:
+    raw_token = f"v2.{secrets.token_urlsafe(32)}"
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+    now = utc_now_naive()
+    session.execute(delete(AuthSession).where(AuthSession.expires_at <= now))
+    session.add(
+        AuthSession(
+            user_id=user.id,
+            token_hash=token_hash,
+            created_at=now,
+            expires_at=now + timedelta(days=30),
+        )
+    )
+    session.flush()
+    stale_sessions = session.scalars(
+        select(AuthSession)
+        .where(AuthSession.user_id == user.id)
+        .order_by(AuthSession.created_at.desc())
+        .offset(8)
+    ).all()
+    for stale_session in stale_sessions:
+        session.delete(stale_session)
+    return user.to_session(raw_token)
+
+
+def verify_sync_auth(session: Session, user_id: str, sync_token: str) -> bool:
+    if not sync_token.startswith("v2.") or len(sync_token) > 128:
+        return False
+    token_hash = hashlib.sha256(sync_token.encode("utf-8")).hexdigest()
+    row = session.scalar(
+        select(AuthSession).where(
+            AuthSession.user_id == user_id,
+            AuthSession.token_hash == token_hash,
+            AuthSession.expires_at > utc_now_naive(),
+        )
+    )
+    return row is not None
 
 
 SYNC_COLLECTIONS = {
@@ -566,6 +729,7 @@ SYNC_COLLECTIONS = {
     "sessions",
     "settings",
     "activeSessions",
+    "deletions",
 }
 
 
@@ -575,18 +739,20 @@ def get_payload_timestamp(payload: dict) -> datetime:
         or payload.get("endedAt")
         or payload.get("startedAt")
         or payload.get("createdAt")
-        or int(datetime.utcnow().timestamp() * 1000)
+        or utc_epoch_ms()
     )
     try:
-        return datetime.utcfromtimestamp(int(value) / 1000)
+        return utc_datetime_from_ms(int(value))
     except Exception:
-        return datetime.utcnow()
+        return utc_now_naive()
 
 
 def get_sync_item_id(collection: str, payload: dict) -> str:
+    if collection == "deletions":
+        return str(payload.get("id") or (f"{payload.get('collection')}:{payload.get('itemId')}" if payload.get("collection") and payload.get("itemId") else ""))[:200]
     if collection == "settings":
-        return payload.get("userId") or payload.get("id") or "settings"
-    return str(payload.get("id") or uuid.uuid4())
+        return str(payload.get("userId") or payload.get("id") or "settings")[:200]
+    return str(payload.get("id") or payload.get("wordId") or payload.get("deckId") or "")[:200]
 
 
 def get_system_lexicon_frontend(lexicon_id: str) -> Optional[dict]:
@@ -1023,7 +1189,6 @@ def generate_word_relations(payload: dict) -> dict:
 @app.get("/api/health")
 def health():
     compat_key = os.getenv("COMPAT_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip()
-    compat_base_url = os.getenv("COMPAT_BASE_URL", "").strip() or "https://api.openai.com/v1"
     compat_model = (
         os.getenv("COMPAT_MODEL", "").strip()
         or os.getenv("OPENAI_MODEL", "gpt-4.1-mini").strip()
@@ -1035,8 +1200,7 @@ def health():
         {
             "ok": True,
             "provider": "compatible-llm" if compat_key else "fallback",
-            "database": get_database_health_info(),
-            "base_url": compat_base_url,
+            "database": "online" if get_database_health_info().get("ok") else "offline",
             "model": compat_model,
             "localIp": local_ip,
             "localAccessUrl": local_access_url,
@@ -1047,11 +1211,13 @@ def health():
 
 @app.post("/api/enrich")
 def enrich():
+    if rate_limit_exceeded("enrich", 30):
+        return jsonify({"error": "Too many requests. Please try again later.", "code": "RATE_LIMITED"}), 429
     payload = request.get_json(silent=True) or {}
     text_value = (payload.get("text") or "").strip()
     kind = payload.get("kind") or detect_kind(text_value)
-    if not text_value:
-        return jsonify({"error": "text is required"}), 400
+    if not text_value or len(text_value) > 120:
+        return jsonify({"error": "text must contain 1–120 characters", "code": "INVALID_TEXT"}), 400
 
     try:
         if not (os.getenv("COMPAT_API_KEY", "").strip() or os.getenv("OPENAI_API_KEY", "").strip()):
@@ -1063,11 +1229,10 @@ def enrich():
             ), 503
         draft = generate_with_openai(text_value, kind)
     except Exception as error:
-        message, status_code, detail = describe_ai_error(error)
+        message, status_code, _detail = describe_ai_error(error)
         return jsonify(
             {
                 "error": message,
-                "detail": detail,
                 "code": "ai_enrich_failed",
             }
         ), status_code
@@ -1077,10 +1242,12 @@ def enrich():
 
 @app.post("/api/word-relations")
 def word_relations():
+    if rate_limit_exceeded("word-relations", 20):
+        return jsonify({"error": "Too many requests. Please try again later.", "code": "RATE_LIMITED"}), 429
     payload = request.get_json(silent=True) or {}
     word = relation_text(payload.get("word"))
-    if not word:
-        return jsonify({"error": "word is required"}), 400
+    if not word or len(word) > 80:
+        return jsonify({"error": "word relation input is invalid", "code": "INVALID_RELATION_INPUT"}), 400
 
     request_payload = {
         "word": word,
@@ -1095,30 +1262,34 @@ def word_relations():
     try:
         result = generate_word_relations(request_payload)
         WORD_RELATION_CACHE[key] = result
+        while len(WORD_RELATION_CACHE) > 250:
+            WORD_RELATION_CACHE.pop(next(iter(WORD_RELATION_CACHE)))
         return jsonify(result)
     except Exception as error:
-        message, status_code, detail = describe_ai_error(error)
-        return jsonify({"error": message, "detail": detail, "code": "word_relations_failed"}), status_code
+        message, status_code, _detail = describe_ai_error(error)
+        return jsonify({"error": message, "code": "word_relations_failed"}), status_code
 
 
 @app.post("/api/auth/register")
 def auth_register():
+    if rate_limit_exceeded("auth-register", 5, 300):
+        return jsonify({"error": "Too many requests. Please try again later.", "code": "RATE_LIMITED"}), 429
     payload = request.get_json(silent=True) or {}
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
     normalized = normalize_username(username)
 
-    if len(normalized) < 3:
-        return jsonify({"error": "账号至少需要 3 个字符。"}), 400
-    if len(password.strip()) < 6:
-        return jsonify({"error": "密码至少需要 6 个字符。"}), 400
+    if not is_valid_username(normalized):
+        return jsonify({"error": "账号需为 3–64 个不含空格的字符。", "code": "INVALID_USERNAME"}), 400
+    if len(password) < 8 or len(password) > 256:
+        return jsonify({"error": "密码需为 8–256 个字符。", "code": "INVALID_PASSWORD"}), 400
 
     with Session(engine) as session:
         existing = session.scalar(select(UserAccount).where(UserAccount.username_normalized == normalized))
         if existing:
             return jsonify({"error": "这个账号已经存在，请直接登录。"}), 409
 
-        now = datetime.utcnow()
+        now = utc_now_naive()
         row = UserAccount(
             id=f"user-{uuid.uuid4().hex[:16]}",
             username=normalized,
@@ -1128,13 +1299,16 @@ def auth_register():
             updated_at=now,
         )
         session.add(row)
+        session.flush()
+        auth_session = issue_session(session, row)
         session.commit()
-        session.refresh(row)
-        return jsonify({"session": row.to_session()}), 201
+        return jsonify({"session": auth_session}), 201
 
 
 @app.post("/api/auth/login")
 def auth_login():
+    if rate_limit_exceeded("auth-login", 12):
+        return jsonify({"error": "Too many requests. Please try again later.", "code": "RATE_LIMITED"}), 429
     payload = request.get_json(silent=True) or {}
     username = (payload.get("username") or "").strip()
     password = payload.get("password") or ""
@@ -1145,35 +1319,43 @@ def auth_login():
         if not user:
             return jsonify({"error": "账号不存在，请先注册。"}), 404
 
-        if user.password_hash != hash_password(password):
-            return jsonify({"error": "密码错误，请重新输入。"}), 401
+        if not verify_password(password, user.password_hash):
+            return jsonify({"error": "账号或密码错误。", "code": "INVALID_CREDENTIALS"}), 401
 
-        user.updated_at = datetime.utcnow()
+        user.updated_at = utc_now_naive()
+        if is_legacy_password_hash(user.password_hash):
+            user.password_hash = hash_password(password)
         session.add(user)
+        auth_session = issue_session(session, user)
         session.commit()
-        session.refresh(user)
-        return jsonify({"session": user.to_session()}), 200
+        return jsonify({"session": auth_session}), 200
 
 
 @app.post("/api/auth/sync-local-user")
 def sync_local_user():
+    if rate_limit_exceeded("auth-sync-local", 8):
+        return jsonify({"error": "Too many requests. Please try again later.", "code": "RATE_LIMITED"}), 429
     payload = request.get_json(silent=True) or {}
     username = (payload.get("username") or "").strip()
     password_hash = (payload.get("passwordHash") or "").strip()
     preferred_user_id = (payload.get("userId") or "").strip()
     normalized = normalize_username(username)
 
-    if len(normalized) < 3 or not password_hash:
-        return jsonify({"error": "username and passwordHash are required"}), 400
+    if not is_valid_username(normalized) or not is_legacy_password_hash(password_hash):
+        return jsonify({"error": "Legacy account data is invalid", "code": "INVALID_LEGACY_ACCOUNT"}), 400
+    if preferred_user_id and not re.fullmatch(r"user-[a-z0-9-]{8,80}", preferred_user_id, flags=re.IGNORECASE):
+        preferred_user_id = ""
 
     with Session(engine) as session:
         existing = session.scalar(select(UserAccount).where(UserAccount.username_normalized == normalized))
         if existing:
-            if existing.password_hash != password_hash:
-                return jsonify({"error": "账号已存在且密码不匹配，无法自动迁移。"}), 409
-            return jsonify({"session": existing.to_session(), "synced": False}), 200
+            if not is_legacy_password_hash(existing.password_hash) or not hmac.compare_digest(existing.password_hash, password_hash):
+                return jsonify({"error": "本地账号需要重新登录后才能继续同步。", "code": "LEGACY_REAUTH_REQUIRED"}), 409
+            auth_session = issue_session(session, existing)
+            session.commit()
+            return jsonify({"session": auth_session, "synced": False}), 200
 
-        now = datetime.utcnow()
+        now = utc_now_naive()
         row = UserAccount(
             id=preferred_user_id or f"user-{uuid.uuid4().hex[:16]}",
             username=normalized,
@@ -1183,51 +1365,131 @@ def sync_local_user():
             updated_at=now,
         )
         session.add(row)
+        session.flush()
+        auth_session = issue_session(session, row)
         session.commit()
-        session.refresh(row)
-        return jsonify({"session": row.to_session(), "synced": True}), 201
+        return jsonify({"session": auth_session, "synced": True}), 201
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    payload = request.get_json(silent=True) or {}
+    user_id = str(payload.get("userId") or "").strip()
+    sync_token = str(payload.get("syncToken") or "").strip()
+    if not user_id or not sync_token.startswith("v2."):
+        return jsonify({"ok": True})
+    token_hash = hashlib.sha256(sync_token.encode("utf-8")).hexdigest()
+    with Session(engine) as session:
+        session.execute(
+            delete(AuthSession).where(
+                AuthSession.user_id == user_id,
+                AuthSession.token_hash == token_hash,
+            )
+        )
+        session.commit()
+    return jsonify({"ok": True})
 
 
 @app.post("/api/sync/pull")
 def sync_pull():
     payload = request.get_json(silent=True) or {}
     user_id = (payload.get("userId") or "").strip()
-    if not user_id:
-        return jsonify({"error": "userId is required"}), 400
+    sync_token = (payload.get("syncToken") or "").strip()
+    since = payload.get("since")
+    try:
+        limit = min(max(int(payload.get("limit") or 250), 1), 1000)
+    except (TypeError, ValueError):
+        return jsonify({"error": "limit is invalid"}), 400
+    cursor = str(payload.get("cursor") or "")
+    if not user_id or len(user_id) > 160:
+        return jsonify({"error": "userId is invalid"}), 400
+    if not sync_token:
+        return jsonify({"error": "Unauthorized"}), 401
+    if cursor and not re.fullmatch(r"\d+:\d+", cursor):
+        return jsonify({"error": "cursor is invalid"}), 400
 
     collections = {name: [] for name in SYNC_COLLECTIONS}
     with Session(engine) as session:
+        if not verify_sync_auth(session, user_id, sync_token):
+            return jsonify({"error": "Unauthorized"}), 401
+
+        query = select(CloudSyncRecord).where(CloudSyncRecord.user_id == user_id)
+        try:
+            since_date = utc_datetime_from_ms(float(since)) if since and float(since) > 0 else None
+        except (TypeError, ValueError, OverflowError):
+            since_date = None
+        if since_date:
+            query = query.where(CloudSyncRecord.updated_at >= since_date)
+        if cursor:
+            cursor_time_raw, cursor_id_raw = cursor.split(":", 1)
+            try:
+                cursor_date = utc_datetime_from_ms(int(cursor_time_raw))
+                cursor_id = int(cursor_id_raw)
+            except (ValueError, OverflowError):
+                return jsonify({"error": "cursor is invalid"}), 400
+            query = query.where(
+                or_(
+                    CloudSyncRecord.updated_at > cursor_date,
+                    and_(CloudSyncRecord.updated_at == cursor_date, CloudSyncRecord.id > cursor_id),
+                )
+            )
         rows = session.scalars(
-            select(CloudSyncRecord).where(CloudSyncRecord.user_id == user_id).order_by(CloudSyncRecord.updated_at.asc())
+            query.order_by(CloudSyncRecord.updated_at.asc(), CloudSyncRecord.id.asc()).limit(limit + 1)
         ).all()
 
-    for row in rows:
+    page_rows = rows[:limit]
+    for row in page_rows:
         if row.collection in collections:
             item = row.to_payload()
             if item:
                 collections[row.collection].append(item)
 
-    return jsonify({"collections": collections, "syncedAt": int(datetime.utcnow().timestamp() * 1000)})
+    last = page_rows[-1] if page_rows else None
+    next_cursor = f"{utc_epoch_ms(last.updated_at)}:{last.id}" if len(rows) > limit and last else None
+    return jsonify(
+        {
+            "collections": collections,
+            "cursor": next_cursor,
+            "hasMore": bool(next_cursor),
+            "syncedAt": utc_epoch_ms(),
+        }
+    )
 
 
 @app.post("/api/sync/push")
 def sync_push():
     payload = request.get_json(silent=True) or {}
     user_id = (payload.get("userId") or "").strip()
+    sync_token = (payload.get("syncToken") or "").strip()
     collections = payload.get("collections") or {}
-    replace = bool(payload.get("replace"))
-    if not user_id:
-        return jsonify({"error": "userId is required"}), 400
+    replace = bool(payload.get("replace") and payload.get("allowDestructiveReplace"))
+    if not user_id or len(user_id) > 160:
+        return jsonify({"error": "userId is invalid"}), 400
+    if not sync_token:
+        return jsonify({"error": "Unauthorized"}), 401
     if not isinstance(collections, dict):
         return jsonify({"error": "collections must be an object"}), 400
+    item_count = sum(len(items) for items in collections.values() if isinstance(items, list))
+    if item_count > 50:
+        return jsonify({"error": "A sync request can contain at most 50 items"}), 413
 
     saved = 0
-    now = datetime.utcnow()
+    rejected = 0
+    now = utc_now_naive()
     with Session(engine) as session:
+        if not verify_sync_auth(session, user_id, sync_token):
+            return jsonify({"error": "Unauthorized"}), 401
         for collection, items in collections.items():
             if collection not in SYNC_COLLECTIONS or not isinstance(items, list):
+                rejected += 1
                 continue
-            incoming_ids = {get_sync_item_id(collection, dict(item)) for item in items if isinstance(item, dict)}
+            incoming_ids = {
+                item_id
+                for item in items
+                if isinstance(item, dict)
+                for item_id in [get_sync_item_id(collection, dict(item))]
+                if item_id
+            }
             if replace:
                 existing_rows = session.scalars(
                     select(CloudSyncRecord).where(
@@ -1240,14 +1502,57 @@ def sync_push():
                         session.delete(row)
             for raw_item in items:
                 if not isinstance(raw_item, dict):
+                    rejected += 1
                     continue
                 item = dict(raw_item)
                 item["userId"] = user_id
-                if collection == "settings":
+                if collection == "deletions":
+                    target_collection = str(item.get("collection") or "").strip()
+                    target_item_id = str(item.get("itemId") or "").strip()
+                    deleted_at_raw = item.get("deletedAt") or item.get("updatedAt") or utc_epoch_ms(now)
+                    try:
+                        deleted_at = utc_datetime_from_ms(int(deleted_at_raw))
+                    except (TypeError, ValueError, OverflowError):
+                        rejected += 1
+                        continue
+                    if (
+                        target_collection not in SYNC_COLLECTIONS
+                        or target_collection == "deletions"
+                        or not target_item_id
+                        or len(target_item_id) > 200
+                    ):
+                        rejected += 1
+                        continue
+                    target = session.scalar(
+                        select(CloudSyncRecord).where(
+                            CloudSyncRecord.user_id == user_id,
+                            CloudSyncRecord.collection == target_collection,
+                            CloudSyncRecord.item_id == target_item_id,
+                        )
+                    )
+                    if target and target.updated_at <= deleted_at:
+                        session.delete(target)
+                    item["id"] = f"{target_collection}:{target_item_id}"
+                    item["deletedAt"] = utc_epoch_ms(deleted_at)
+                    item["updatedAt"] = item["deletedAt"]
+                elif collection == "settings":
                     item["id"] = user_id
 
                 item_id = get_sync_item_id(collection, item)
+                if not item_id:
+                    rejected += 1
+                    continue
                 item_updated_at = get_payload_timestamp(item)
+                if collection != "deletions":
+                    deletion_row = session.scalar(
+                        select(CloudSyncRecord).where(
+                            CloudSyncRecord.user_id == user_id,
+                            CloudSyncRecord.collection == "deletions",
+                            CloudSyncRecord.item_id == f"{collection}:{item_id}",
+                        )
+                    )
+                    if deletion_row and deletion_row.updated_at >= item_updated_at:
+                        continue
                 existing = session.scalar(
                     select(CloudSyncRecord).where(
                         CloudSyncRecord.user_id == user_id,
@@ -1259,6 +1564,9 @@ def sync_push():
                     continue
 
                 payload_json = json.dumps(item, ensure_ascii=False, separators=(",", ":"))
+                if len(payload_json.encode("utf-8")) > 96 * 1024:
+                    rejected += 1
+                    continue
                 if existing:
                     existing.payload_json = payload_json
                     existing.updated_at = item_updated_at or now
@@ -1276,7 +1584,7 @@ def sync_push():
                 saved += 1
         session.commit()
 
-    return jsonify({"ok": True, "saved": saved, "syncedAt": int(datetime.utcnow().timestamp() * 1000)})
+    return jsonify({"ok": True, "saved": saved, "rejected": rejected, "syncedAt": utc_epoch_ms()})
 
 
 @app.get("/api/lexicons")
@@ -1286,13 +1594,13 @@ def list_lexicons():
         rows = session.scalars(
             select(Lexicon).where(Lexicon.user_key == user_key).order_by(Lexicon.created_at.desc())
         ).all()
-        items = session.scalars(select(LexiconItem).where(LexiconItem.user_key == user_key)).all()
+        count_rows = session.execute(
+            select(LexiconItem.lexicon_id, func.count(LexiconItem.id))
+            .where(LexiconItem.user_key == user_key, LexiconItem.lexicon_id != "")
+            .group_by(LexiconItem.lexicon_id)
+        ).all()
 
-    custom_counts: dict[str, int] = {}
-    for item in items:
-        lexicon_id = item.lexicon_id or ""
-        if lexicon_id:
-            custom_counts[lexicon_id] = custom_counts.get(lexicon_id, 0) + 1
+    custom_counts = {lexicon_id: item_count for lexicon_id, item_count in count_rows}
 
     system_frontend = [get_system_lexicon_frontend(entry["id"]) for entry in SYSTEM_LEXICONS]
     custom_frontend = [row.to_frontend(item_count=custom_counts.get(row.id, 0)) for row in rows]
@@ -1310,10 +1618,13 @@ def get_lexicon(lexicon_id: str):
         row = session.get(Lexicon, lexicon_id)
         if not row or row.user_key != user_key:
             return jsonify({"error": "lexicon not found"}), 404
-        item_count = session.scalars(
-            select(LexiconItem).where(LexiconItem.user_key == user_key, LexiconItem.lexicon_id == lexicon_id)
-        ).all()
-        return jsonify({"lexicon": row.to_frontend(item_count=len(item_count))})
+        item_count = session.scalar(
+            select(func.count(LexiconItem.id)).where(
+                LexiconItem.user_key == user_key,
+                LexiconItem.lexicon_id == lexicon_id,
+            )
+        ) or 0
+        return jsonify({"lexicon": row.to_frontend(item_count=item_count)})
 
 
 @app.post("/api/lexicons")

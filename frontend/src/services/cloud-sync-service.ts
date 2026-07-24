@@ -363,22 +363,22 @@ function isChangedSince(item: unknown, since?: number) {
 
 async function collectLocalData(userId: string, options: { since?: number; full?: boolean } = {}): Promise<SyncCollections> {
   const [decks, words, learnRecords, reviewRecords, sessions, settings] = await Promise.all([
-    db.decks.toArray(),
-    db.words.toArray(),
-    db.learnRecords.toArray(),
-    db.reviewRecords.toArray(),
-    db.sessions.toArray(),
-    db.settings.toArray(),
+    db.decks.where("userId").equals(userId).toArray(),
+    db.words.where("userId").equals(userId).toArray(),
+    db.learnRecords.where("userId").equals(userId).toArray(),
+    db.reviewRecords.where("userId").equals(userId).toArray(),
+    db.sessions.where("userId").equals(userId).toArray(),
+    db.settings.where("userId").equals(userId).toArray(),
   ]);
   const since = options.full ? undefined : options.since;
 
   return {
-    decks: decks.filter((deck) => deck.sourceType !== "system" && deck.userId === userId && isChangedSince(deck, since)),
-    words: words.filter((word) => word.userId === userId && isCloudRelevantWord(word) && isChangedSince(word, since)),
-    learnRecords: learnRecords.filter((record) => record.userId === userId && isChangedSince(record, since)),
-    reviewRecords: reviewRecords.filter((record) => record.userId === userId && isChangedSince(record, since)),
-    sessions: sessions.filter((session) => session.userId === userId && isChangedSince(session, since)),
-    settings: settings.filter((item) => item.userId === userId && isChangedSince(item, since)).map(({ id: _id, ...setting }) => setting),
+    decks: decks.filter((deck) => deck.sourceType !== "system" && isChangedSince(deck, since)),
+    words: words.filter((word) => isCloudRelevantWord(word) && isChangedSince(word, since)),
+    learnRecords: learnRecords.filter((record) => isChangedSince(record, since)),
+    reviewRecords: reviewRecords.filter((record) => isChangedSince(record, since)),
+    sessions: sessions.filter((session) => isChangedSince(session, since)),
+    settings: settings.filter((item) => isChangedSince(item, since)).map(({ id: _id, ...setting }) => setting),
     activeSessions: collectActiveSessions(userId).filter((item) => isChangedSince(item, since)),
     deletions: readDeletionLog(userId).filter((item) => isChangedSince(item, since)),
   };

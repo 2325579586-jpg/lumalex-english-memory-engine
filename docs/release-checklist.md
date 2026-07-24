@@ -5,6 +5,8 @@ Use this checklist before saying a change is live on Vercel.
 ## Local Confidence
 
 - [ ] `cd frontend && npm.cmd run build` passes on Windows.
+- [ ] `npm.cmd audit` and `cd frontend && npm.cmd audit` report no known vulnerabilities.
+- [ ] `python -m pip_audit -r backend/requirements.txt` reports no known vulnerabilities in a Python 3.12+ environment.
 - [ ] `git diff --check` passes for the touched files.
 - [ ] Existing unrelated worktree changes are identified and not reverted.
 - [ ] The change supports the vocabulary-learning direction for students or exam learners.

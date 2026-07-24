@@ -8,6 +8,8 @@ This backend now does three things for the website:
 
 ## 1. Install dependencies
 
+Use Python 3.12 or newer (CI uses Python 3.12):
+
 ```powershell
 cd D:\codex\world_app\backend
 python -m pip install -r requirements.txt
@@ -24,6 +26,7 @@ Copy `.env.example` to `.env` and update:
 - `APP_HOST`
 - `APP_PORT`
 - `PUBLIC_BASE_URL` (optional, reserved for a future public deployment)
+- `CORS_ALLOWED_ORIGINS` (optional comma-separated origins; leave empty for same-origin use)
 
 Example MySQL connection:
 
@@ -70,5 +73,6 @@ COMPAT_MODEL=qwen3-max
 - The frontend is still usable if the backend is offline; it falls back to local browser storage.
 - For LAN access, `APP_HOST=0.0.0.0` is recommended.
 - If no compatible API key is configured, the enrich endpoint falls back to dictionary + template generation.
-- Custom words saved through the backend are stored per browser-side `user key` until a real login system is added.
+- Account sync requires an expiring, revocable session token. New passwords use salted scrypt hashes; legacy local accounts are upgraded after password login.
+- Legacy custom-word endpoints remain scoped by the browser-side `user key` for compatibility with the root static fallback. Do not expose that legacy client as a multi-tenant public service.
 - `PUBLIC_BASE_URL` is reserved for Version 2 if you later move the app to a public domain.

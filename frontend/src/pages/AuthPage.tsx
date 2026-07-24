@@ -48,7 +48,7 @@ export function AuthPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center overflow-x-hidden bg-background px-4 py-8 text-foreground sm:px-6">
+    <div className="flex min-h-[100dvh] items-center justify-center overflow-x-hidden bg-background px-4 py-8 text-foreground sm:px-6">
       <div className="grid w-full max-w-6xl grid-cols-[minmax(0,1fr)] gap-6 lg:gap-8 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
         <Card className="w-full min-w-0 max-w-full overflow-hidden">
           <CardContent className="flex h-full flex-col justify-between gap-8 p-6 sm:p-8 lg:p-10">
@@ -86,6 +86,7 @@ export function AuthPage() {
             <div className="flex items-center gap-2 rounded-2xl border border-border bg-panel p-1">
               <button
                 type="button"
+                aria-pressed={mode === "register"}
                 onClick={() => setMode("register")}
                 className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
                   mode === "register" ? "bg-white text-slate-950" : "text-muted-foreground"
@@ -95,6 +96,7 @@ export function AuthPage() {
               </button>
               <button
                 type="button"
+                aria-pressed={mode === "login"}
                 onClick={() => setMode("login")}
                 className={`flex-1 rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
                   mode === "login" ? "bg-white text-slate-950" : "text-muted-foreground"
@@ -110,9 +112,18 @@ export function AuthPage() {
                 : "登录后才能正式进入应用，系统会自动加载你的词库和学习进度。"}
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5 p-6 pt-0 sm:p-8 sm:pt-0">
+          <CardContent className="p-6 pt-0 sm:p-8 sm:pt-0">
+            <form
+              className="space-y-5"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleSubmit();
+              }}
+            >
             {(message || errorMessage) && (
               <div
+                role={errorMessage ? "alert" : "status"}
+                aria-live="polite"
                 className={`rounded-2xl border px-4 py-3 text-sm ${
                   errorMessage
                     ? "border-destructive/40 bg-destructive/10 text-destructive"
@@ -124,24 +135,35 @@ export function AuthPage() {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">账号</label>
-              <Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="请输入账号名" />
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-sm font-medium">密码</label>
+              <label htmlFor="account-username" className="text-sm font-medium">账号</label>
               <Input
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="至少 6 位密码"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void handleSubmit();
-                }}
+                id="account-username"
+                autoComplete="username"
+                minLength={3}
+                maxLength={64}
+                required
+                value={username}
+                onChange={(event) => setUsername(event.target.value)}
+                placeholder="请输入账号名"
               />
             </div>
 
-            <Button className="w-full" onClick={() => void handleSubmit()} disabled={loading}>
+            <div className="space-y-2">
+              <label htmlFor="account-password" className="text-sm font-medium">密码</label>
+              <Input
+                id="account-password"
+                type="password"
+                autoComplete={mode === "register" ? "new-password" : "current-password"}
+                minLength={mode === "register" ? 8 : 1}
+                maxLength={256}
+                required
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder={mode === "register" ? "至少 8 位密码" : "请输入密码"}
+              />
+            </div>
+
+            <Button type="submit" className="w-full" disabled={loading}>
               {loading ? "处理中..." : mode === "register" ? "注册账号" : "登录进入应用"}
             </Button>
 
@@ -160,6 +182,7 @@ export function AuthPage() {
                   </p>
                 </div>
                 <Button
+                  type="button"
                   variant="secondary"
                   className="shrink-0"
                   onClick={() => void handleStartDemo()}
@@ -170,6 +193,7 @@ export function AuthPage() {
                 </Button>
               </div>
             </div>
+            </form>
           </CardContent>
         </Card>
       </div>

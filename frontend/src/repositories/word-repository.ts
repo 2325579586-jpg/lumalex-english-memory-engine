@@ -27,7 +27,7 @@ function applyQuery(items: WordItem[], filters: LibraryFilters) {
 export const wordRepository = {
   async list(filters: LibraryFilters = {}) {
     const userId = requireCurrentUserId();
-    const items = (await db.words.toArray()).filter((item) => item.userId === userId);
+    const items = await db.words.where("userId").equals(userId).toArray();
     return applyQuery(items, filters).sort((a, b) => b.updatedAt - a.updatedAt);
   },
   async listByDeck(deckId: string) {
@@ -37,8 +37,7 @@ export const wordRepository = {
   },
   async listByStatus(statuses: WordStatus[]) {
     const userId = requireCurrentUserId();
-    const items = (await db.words.toArray()).filter((item) => item.userId === userId);
-    return items.filter((item) => statuses.includes(item.status));
+    return db.words.where("[userId+status]").anyOf(statuses.map((status) => [userId, status])).toArray();
   },
   async getById(id: string) {
     const userId = requireCurrentUserId();
@@ -57,11 +56,17 @@ export const wordRepository = {
     scheduleCloudDataSync();
   },
   async bulkUpdate(ids: string[], patch: Partial<WordItem>) {
-    await Promise.all(ids.map((id) => db.words.update(id, { ...patch, updatedAt: Date.now() })));
+    const updatedAt = Date.now();
+    await db.transaction("rw", db.words, async () => {
+      await db.words.where(":id").anyOf(ids).modify({ ...patch, updatedAt });
+    });
     scheduleCloudDataSync();
   },
   async moveToDeck(ids: string[], deckId: string) {
-    await Promise.all(ids.map((id) => db.words.update(id, { deckId, updatedAt: Date.now() })));
+    const updatedAt = Date.now();
+    await db.transaction("rw", db.words, async () => {
+      await db.words.where(":id").anyOf(ids).modify({ deckId, updatedAt });
+    });
     scheduleCloudDataSync();
   },
   async delete(ids: string[]) {
@@ -78,12 +83,10 @@ export const wordRepository = {
   },
   async count() {
     const userId = requireCurrentUserId();
-    const items = await db.words.toArray();
-    return items.filter((item) => item.userId === userId).length;
+    return db.words.where("userId").equals(userId).count();
   },
   async countByStatus(statuses: WordStatus[]) {
     const userId = requireCurrentUserId();
-    const items = await db.words.toArray();
-    return items.filter((item) => item.userId === userId && statuses.includes(item.status)).length;
+    return db.words.where("[userId+status]").anyOf(statuses.map((status) => [userId, status])).count();
   },
 };

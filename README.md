@@ -91,19 +91,23 @@ docs/                Product notes, weekly updates, and public assets
 vercel.json          Vercel deployment configuration
 ```
 
+See [docs/architecture.md](docs/architecture.md) for the supported runtime boundaries, authentication model, and sync data flow. The root static files are a Flask fallback for the legacy client; production product work lives in `frontend/src`.
+
 ## Getting Started
+
+Use Node.js 20.19+ and Python 3.12+ for the supported development environment.
 
 Install root API dependencies:
 
 ```bash
-npm install
+npm ci
 ```
 
 Install and run the frontend:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
@@ -116,18 +120,26 @@ npm.cmd run build
 
 ## Development Checks
 
-The repository includes a GitHub Actions workflow that runs the production frontend build on pushes and pull requests to `main`.
+The repository includes Node security/unit tests, Flask integration tests, API syntax validation, standalone TypeScript checking, and a production frontend build. GitHub Actions runs the same checks on pushes and pull requests to `main`.
 
 Current local checks:
 
 ```bash
-npm install
+npm ci
 cd frontend
-npm install
-npm run build
+npm ci
+cd ..
+npm run check
 ```
 
-Lint, test, and standalone typecheck scripts are not configured yet. See `TODO.md` for the next stability improvements.
+Focused commands:
+
+```bash
+npm run check:api
+npm test
+npm --prefix frontend run typecheck
+npm --prefix frontend run build
+```
 
 Before calling a change live, use `docs/release-checklist.md` to verify local build health, desktop behavior, mobile behavior, and deployed Vercel content.
 
@@ -140,7 +152,10 @@ Common server variables:
 ```env
 DATABASE_URL=postgresql://...
 POSTGRES_URL=postgresql://...
+CORS_ALLOWED_ORIGINS=https://separate-frontend.example
 ```
+
+Leave `CORS_ALLOWED_ORIGINS` empty for the recommended same-origin deployment. Passwords use salted scrypt hashes, sync sessions are random and revocable, and existing legacy local accounts are upgraded after password login.
 
 Frontend development can point to a deployed API:
 
@@ -152,7 +167,7 @@ VITE_API_BASE=https://your-domain.example/api
 
 The repository is configured for Vercel:
 
-- root install: `npm install && cd frontend && npm install`
+- root install: `npm ci && cd frontend && npm ci`
 - build command: `cd frontend && npm run build`
 - output directory: `frontend/dist`
 
@@ -161,8 +176,8 @@ Set database credentials in the hosting provider environment variable panel befo
 ## Roadmap
 
 - Add dedicated high school, IELTS, and TOEFL public lexicons.
-- Add lightweight automated tests for auth sync, review scheduling, and dictionary lookup.
-- Split large frontend chunks so first load is faster on student phones.
+- Add browser automation for complete learn, review, spelling, and cloud-conflict flows.
+- Add review scheduling and dictionary schema unit coverage.
 - Add shareable study progress cards for social and class group sharing.
 - Improve README screenshots with real deployed-product captures after the next stable release.
 - Publish a student-facing changelog so users can see visible weekly progress.

@@ -188,7 +188,10 @@ async function ensureSystemLexiconsSeeded() {
       `;
 
     }
-  })();
+  })().catch((error) => {
+    seedPromise = null;
+    throw error;
+  });
 
   return seedPromise;
 }

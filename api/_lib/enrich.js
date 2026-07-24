@@ -57,7 +57,11 @@ function buildFallbackMnemonic(text, meaning) {
 }
 
 async function fetchDictionaryPayload(text) {
-  const response = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(text)}`);
+  const response = await fetchWithTimeout(
+    `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(text)}`,
+    {},
+    12_000,
+  );
   if (!response.ok) return null;
   const payload = await response.json().catch(() => null);
   return Array.isArray(payload) && payload.length ? payload[0] : null;
@@ -169,7 +173,7 @@ async function generateWithQwen(text, kind) {
     "Do not include markdown fences.",
   ].join(" ");
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
+  const response = await fetchWithTimeout(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -184,7 +188,7 @@ async function generateWithQwen(text, kind) {
         { role: "user", content: `Generate one study card for this ${kind}: ${text}. Return strict JSON only.` },
       ],
     }),
-  });
+  }, 30_000);
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
@@ -237,3 +241,4 @@ module.exports = {
   enrichWord,
   detectKind,
 };
+const { fetchWithTimeout } = require("./fetch");

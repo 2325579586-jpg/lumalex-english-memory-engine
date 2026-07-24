@@ -40,7 +40,7 @@ const mobileItems = [
 export function Sidebar() {
   return (
     <>
-      <aside className="hidden h-screen w-[264px] shrink-0 flex-col border-r border-white/[0.08] bg-card/[0.82] px-5 py-6 shadow-[18px_0_60px_rgba(0,0,0,0.18)] backdrop-blur-2xl lg:flex">
+      <aside className="hidden h-full w-[264px] shrink-0 flex-col overflow-y-auto border-r border-white/[0.08] bg-card/[0.82] px-5 py-6 shadow-[18px_0_60px_rgba(0,0,0,0.18)] backdrop-blur-2xl lg:flex">
         <div className="mb-8 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-[1.1rem] bg-primary text-sm font-bold text-primary-foreground shadow-glow">
             LL
