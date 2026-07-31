@@ -3,7 +3,7 @@
 ## Blockers / publish safety
 - Frontend production build succeeds locally with `npm.cmd run build` and is covered by GitHub Actions on pull requests.
 - Backend syntax validation succeeds with `python -m py_compile backend/app.py`.
-- Git access was restored for the 2026-07-16 maintenance run; the queued documentation can be committed and pushed to the existing maintenance branch.
+- Git access is working, and weekly maintenance changes can be committed and pushed to the existing maintenance branch after checks pass.
 - The active maintenance branch and `origin/main` have no usable merge base, so publishing these application changes to `main` requires a reviewed reconciliation branch/PR rather than a force push.
 - Node API security tests and Flask authentication/sync integration tests now run in CI; browser-level product flows still require smoke testing.
 - Current maintenance branch has browser smoke coverage for auth demo entry, library landing, and review entry, but not for a full spelling/review completion cycle with seeded due words.

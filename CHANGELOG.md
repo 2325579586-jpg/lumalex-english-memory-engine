@@ -6,6 +6,27 @@ The format is based on Keep a Changelog, and this project follows Conventional C
 
 ## [Unreleased]
 
+## [2026-07-31]
+
+### Maintenance
+- Reviewed repository activity since the 2026-07-24 maintenance run; no new feature, bug-fix, UI, data, or API commits were present.
+- Confirmed the active weekly-maintenance branch is clean and synchronized with its remote tracking branch.
+
+### Verified
+- `npm.cmd run check` (20 API files, 6 Node tests, 4 Flask tests, TypeScript build, and Vite production build)
+- `git diff --check`
+
+### Known issues
+- Browser end-to-end coverage is still missing for complete learn, review, spelling, logout, and cloud-conflict flows.
+- The local maintenance machine uses Python 3.9, while the supported backend and audit runtime is Python 3.12.
+- The active maintenance branch and `origin/main` still require a reviewed history reconciliation; do not force-push or merge unstable work directly into `main`.
+
+### Next development plan
+- Add browser automation for the full review-to-spelling lifecycle and cloud conflict/re-authentication paths.
+- Add frontend linting with React hooks and accessibility rules.
+- Add a Postgres-backed integration test for conditional sync UPSERT behavior.
+- Reconcile the maintained branch with `origin/main` through a reviewed branch or pull request.
+
 ## [2026-07-24]
 
 ### Added
